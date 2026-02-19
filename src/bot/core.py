@@ -65,7 +65,7 @@ class ClaudeCodeBot:
         from ..storage.facade import Storage
 
         storage = cast(Storage, self.deps["storage"])
-        security = cast(SecurityValidator, self.deps["security"])
+        security = cast(SecurityValidator, self.deps["security_validator"])
         self.feature_registry = FeatureRegistry(
             config=self.settings,
             storage=storage,
