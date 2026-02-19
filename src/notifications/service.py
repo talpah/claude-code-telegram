@@ -5,7 +5,6 @@ through the Telegram bot API with rate limiting (1 msg/sec per chat).
 """
 
 import asyncio
-from typing import List, Optional
 
 import structlog
 from telegram import Bot
@@ -28,7 +27,7 @@ class NotificationService:
         self,
         event_bus: EventBus,
         bot: Bot,
-        default_chat_ids: Optional[List[int]] = None,
+        default_chat_ids: list[int] | None = None,
     ) -> None:
         self.event_bus = event_bus
         self.bot = bot
@@ -36,7 +35,7 @@ class NotificationService:
         self._send_queue: asyncio.Queue[AgentResponseEvent] = asyncio.Queue()
         self._last_send_per_chat: dict[int, float] = {}
         self._running = False
-        self._sender_task: Optional[asyncio.Task[None]] = None
+        self._sender_task: asyncio.Task[None] | None = None
 
     def register(self) -> None:
         """Subscribe to agent response events."""
@@ -74,7 +73,7 @@ class NotificationService:
         while self._running:
             try:
                 event = await asyncio.wait_for(self._send_queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -83,7 +82,7 @@ class NotificationService:
             for chat_id in chat_ids:
                 await self._rate_limited_send(chat_id, event)
 
-    def _resolve_chat_ids(self, event: AgentResponseEvent) -> List[int]:
+    def _resolve_chat_ids(self, event: AgentResponseEvent) -> list[int]:
         """Determine which chats to send to."""
         if event.chat_id and event.chat_id != 0:
             return [event.chat_id]
@@ -131,12 +130,12 @@ class NotificationService:
                 event_id=event.id,
             )
 
-    def _split_message(self, text: str, max_length: int = 4096) -> List[str]:
+    def _split_message(self, text: str, max_length: int = 4096) -> list[str]:
         """Split long messages at paragraph boundaries."""
         if len(text) <= max_length:
             return [text]
 
-        chunks: List[str] = []
+        chunks: list[str] = []
         while text:
             if len(text) <= max_length:
                 chunks.append(text)

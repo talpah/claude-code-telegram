@@ -9,7 +9,7 @@ Features:
 
 import re
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 import structlog
 
@@ -131,9 +131,7 @@ class SecurityValidator:
         r".*\.rar$",  # Archives (potentially dangerous)
     ]
 
-    def __init__(
-        self, approved_directory: Path, disable_security_patterns: bool = False
-    ):
+    def __init__(self, approved_directory: Path, disable_security_patterns: bool = False):
         """Initialize validator with approved directory."""
         self.approved_directory = approved_directory.resolve()
         self.disable_security_patterns = disable_security_patterns
@@ -143,9 +141,7 @@ class SecurityValidator:
             disable_security_patterns=self.disable_security_patterns,
         )
 
-    def validate_path(
-        self, user_path: str, current_dir: Optional[Path] = None
-    ) -> Tuple[bool, Optional[Path], Optional[str]]:
+    def validate_path(self, user_path: str, current_dir: Path | None = None) -> tuple[bool, Path | None, str | None]:
         """Validate and resolve user-provided path.
 
         Returns:
@@ -215,7 +211,7 @@ class SecurityValidator:
         except ValueError:
             return False
 
-    def validate_filename(self, filename: str) -> Tuple[bool, Optional[str]]:
+    def validate_filename(self, filename: str) -> tuple[bool, str | None]:
         """Validate uploaded filename.
 
         Returns:
@@ -235,9 +231,7 @@ class SecurityValidator:
         # Check for forbidden patterns
         for pattern in self.DANGEROUS_PATTERNS:
             if re.search(pattern, filename, re.IGNORECASE):
-                logger.warning(
-                    "Dangerous pattern in filename", filename=filename, pattern=pattern
-                )
+                logger.warning("Dangerous pattern in filename", filename=filename, pattern=pattern)
                 return False, "Invalid filename: contains forbidden pattern"
 
         # Check for forbidden filenames
@@ -248,9 +242,7 @@ class SecurityValidator:
         # Check for dangerous file patterns
         for pattern in self.DANGEROUS_FILE_PATTERNS:
             if re.match(pattern, filename, re.IGNORECASE):
-                logger.warning(
-                    "Dangerous file pattern", filename=filename, pattern=pattern
-                )
+                logger.warning("Dangerous file pattern", filename=filename, pattern=pattern)
                 return False, f"File type not allowed: {filename}"
 
         # Check extension
@@ -258,9 +250,7 @@ class SecurityValidator:
         ext = path_obj.suffix.lower()
 
         if ext and ext not in self.ALLOWED_EXTENSIONS:
-            logger.warning(
-                "File extension not allowed", filename=filename, extension=ext
-            )
+            logger.warning("File extension not allowed", filename=filename, extension=ext)
             return False, f"File type not allowed: {ext}"
 
         # Check for hidden files (starting with .)
@@ -310,9 +300,7 @@ class SecurityValidator:
 
         return sanitized
 
-    def validate_command_args(
-        self, args: List[str]
-    ) -> Tuple[bool, List[str], Optional[str]]:
+    def validate_command_args(self, args: list[str]) -> tuple[bool, list[str], str | None]:
         """Validate and sanitize command arguments.
 
         Returns:
@@ -327,9 +315,7 @@ class SecurityValidator:
             # Check for dangerous patterns
             for pattern in self.DANGEROUS_PATTERNS:
                 if re.search(pattern, arg, re.IGNORECASE):
-                    logger.warning(
-                        "Dangerous pattern in command arg", arg=arg, pattern=pattern
-                    )
+                    logger.warning("Dangerous pattern in command arg", arg=arg, pattern=pattern)
                     return False, [], "Invalid argument: contains forbidden pattern"
 
             # Sanitize argument
@@ -376,7 +362,7 @@ class SecurityValidator:
 
         return True
 
-    def get_security_summary(self) -> Dict[str, Any]:
+    def get_security_summary(self) -> dict[str, Any]:
         """Get summary of security validation rules."""
         return {
             "approved_directory": str(self.approved_directory),

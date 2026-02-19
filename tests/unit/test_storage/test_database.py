@@ -40,9 +40,7 @@ class TestDatabaseManager:
         """Test that schema is created properly."""
         async with db_manager.get_connection() as conn:
             # Check that tables exist
-            cursor = await conn.execute(
-                "SELECT name FROM sqlite_master WHERE type='table'"
-            )
+            cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
             tables = [row[0] for row in await cursor.fetchall()]
 
             expected_tables = [
@@ -70,10 +68,7 @@ class TestDatabaseManager:
     async def test_indexes_created(self, db_manager):
         """Test that indexes are created."""
         async with db_manager.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT name FROM sqlite_master "
-                "WHERE type='index' AND name LIKE 'idx_%'"
-            )
+            cursor = await conn.execute("SELECT name FROM sqlite_master WHERE type='index' AND name LIKE 'idx_%'")
             indexes = [row[0] for row in await cursor.fetchall()]
 
             expected_indexes = [

@@ -34,10 +34,7 @@ def group_thread_settings(tmp_dir):
     project_dir.mkdir()
     config_file = tmp_dir / "projects.yaml"
     config_file.write_text(
-        "projects:\n"
-        "  - slug: project_a\n"
-        "    name: Project A\n"
-        "    path: project_a\n",
+        "projects:\n  - slug: project_a\n    name: Project A\n    path: project_a\n",
         encoding="utf-8",
     )
     return create_test_config(
@@ -56,10 +53,7 @@ def private_thread_settings(tmp_dir):
     project_dir.mkdir()
     config_file = tmp_dir / "projects.yaml"
     config_file.write_text(
-        "projects:\n"
-        "  - slug: project_a\n"
-        "    name: Project A\n"
-        "    path: project_a\n",
+        "projects:\n  - slug: project_a\n    name: Project A\n    path: project_a\n",
         encoding="utf-8",
     )
     return create_test_config(
@@ -93,11 +87,7 @@ def test_agentic_registers_5_commands(agentic_settings, deps):
     # Collect all CommandHandler registrations
     from telegram.ext import CommandHandler
 
-    cmd_handlers = [
-        call
-        for call in app.add_handler.call_args_list
-        if isinstance(call[0][0], CommandHandler)
-    ]
+    cmd_handlers = [call for call in app.add_handler.call_args_list if isinstance(call[0][0], CommandHandler)]
     commands = [h[0][0].commands for h in cmd_handlers]
 
     assert len(cmd_handlers) == 5
@@ -118,11 +108,7 @@ def test_classic_registers_13_commands(classic_settings, deps):
 
     from telegram.ext import CommandHandler
 
-    cmd_handlers = [
-        call
-        for call in app.add_handler.call_args_list
-        if isinstance(call[0][0], CommandHandler)
-    ]
+    cmd_handlers = [call for call in app.add_handler.call_args_list if isinstance(call[0][0], CommandHandler)]
 
     assert len(cmd_handlers) == 13
 
@@ -137,16 +123,8 @@ def test_agentic_registers_text_document_photo_handlers(agentic_settings, deps):
 
     from telegram.ext import CallbackQueryHandler, MessageHandler
 
-    msg_handlers = [
-        call
-        for call in app.add_handler.call_args_list
-        if isinstance(call[0][0], MessageHandler)
-    ]
-    cb_handlers = [
-        call
-        for call in app.add_handler.call_args_list
-        if isinstance(call[0][0], CallbackQueryHandler)
-    ]
+    msg_handlers = [call for call in app.add_handler.call_args_list if isinstance(call[0][0], MessageHandler)]
+    cb_handlers = [call for call in app.add_handler.call_args_list if isinstance(call[0][0], CallbackQueryHandler)]
 
     # 3 message handlers (text, document, photo)
     assert len(msg_handlers) == 3
@@ -195,10 +173,7 @@ async def test_agentic_start_no_keyboard(agentic_settings, deps):
     update.message.reply_text.assert_called_once()
     call_kwargs = update.message.reply_text.call_args
     # No reply_markup argument (no keyboard)
-    assert (
-        "reply_markup" not in call_kwargs.kwargs
-        or call_kwargs.kwargs.get("reply_markup") is None
-    )
+    assert "reply_markup" not in call_kwargs.kwargs or call_kwargs.kwargs.get("reply_markup") is None
     # Contains user name
     assert "Alice" in call_kwargs.args[0]
 
@@ -286,9 +261,7 @@ async def test_agentic_text_calls_claude(agentic_settings, deps):
 
     # Response sent without keyboard (reply_markup=None)
     response_calls = [
-        c
-        for c in update.message.reply_text.call_args_list
-        if c != update.message.reply_text.call_args_list[0]
+        c for c in update.message.reply_text.call_args_list if c != update.message.reply_text.call_args_list[0]
     ]
     for call in response_calls:
         assert call.kwargs.get("reply_markup") is None
@@ -305,9 +278,7 @@ async def test_agentic_callback_scoped_to_cd_pattern(agentic_settings, deps):
     from telegram.ext import CallbackQueryHandler
 
     cb_handlers = [
-        call[0][0]
-        for call in app.add_handler.call_args_list
-        if isinstance(call[0][0], CallbackQueryHandler)
+        call[0][0] for call in app.add_handler.call_args_list if isinstance(call[0][0], CallbackQueryHandler)
     ]
 
     assert len(cb_handlers) == 1
@@ -402,10 +373,7 @@ class TestRedactSecrets:
     """Ensure sensitive substrings are redacted from Bash command summaries."""
 
     def test_safe_command_unchanged(self):
-        assert (
-            _redact_secrets("poetry run pytest tests/ -v")
-            == "poetry run pytest tests/ -v"
-        )
+        assert _redact_secrets("poetry run pytest tests/ -v") == "poetry run pytest tests/ -v"
 
     def test_anthropic_api_key_redacted(self):
         key = "sk-ant-api03-abc123def456ghi789jkl012mno345"
@@ -467,9 +435,7 @@ class TestRedactSecrets:
     def test_summarize_tool_input_non_bash_unchanged(self, agentic_settings, deps):
         """Non-Bash tools don't go through redaction."""
         orchestrator = MessageOrchestrator(agentic_settings, deps)
-        result = orchestrator._summarize_tool_input(
-            "Read", {"file_path": "/home/user/.env"}
-        )
+        result = orchestrator._summarize_tool_input("Read", {"file_path": "/home/user/.env"})
         assert result == ".env"
 
 
@@ -632,10 +598,7 @@ async def test_thread_mode_loads_and_persists_thread_state(group_thread_settings
 
     await wrapped(update, context)
 
-    assert (
-        context.user_data["thread_state"]["-1001234567890:777"]["claude_session_id"]
-        == "new-session"
-    )
+    assert context.user_data["thread_state"]["-1001234567890:777"]["claude_session_id"] == "new-session"
 
 
 async def test_sync_threads_bypasses_thread_gate(group_thread_settings, deps):
@@ -697,9 +660,7 @@ async def test_private_mode_start_bypasses_thread_gate(private_thread_settings, 
     project_threads_manager.resolve_project.assert_not_called()
 
 
-async def test_private_mode_start_inside_topic_uses_thread_context(
-    private_thread_settings, deps
-):
+async def test_private_mode_start_inside_topic_uses_thread_context(private_thread_settings, deps):
     """/start in private topic should load mapped thread context."""
     orchestrator = MessageOrchestrator(private_thread_settings, deps)
     project_path = private_thread_settings.approved_directory / "project_a"

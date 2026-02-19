@@ -59,9 +59,7 @@ async def test_sync_topics_idempotent(tmp_path: Path, db_manager) -> None:
     manager = ProjectThreadManager(registry, repo)
 
     bot = AsyncMock()
-    bot.create_forum_topic = AsyncMock(
-        return_value=SimpleNamespace(message_thread_id=101)
-    )
+    bot.create_forum_topic = AsyncMock(return_value=SimpleNamespace(message_thread_id=101))
     bot.send_message = AsyncMock()
     bot.reopen_forum_topic = AsyncMock()
     bot.close_forum_topic = AsyncMock()
@@ -125,7 +123,7 @@ async def test_sync_deactivates_stale_projects(tmp_path: Path, db_manager) -> No
 
     reduced_file = tmp_path / "projects_reduced.yaml"
     reduced_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: App1\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: App1\n    path: app1\n",
         encoding="utf-8",
     )
     reduced_registry = load_project_registry(reduced_file, approved)
@@ -145,9 +143,7 @@ async def test_sync_deactivates_stale_projects(tmp_path: Path, db_manager) -> No
     )
 
 
-async def test_sync_private_topics_unavailable_raises(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_private_topics_unavailable_raises(tmp_path: Path, db_manager) -> None:
     """Private topics unavailable should raise dedicated error."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -159,17 +155,13 @@ async def test_sync_private_topics_unavailable_raises(
     manager = ProjectThreadManager(registry, repo)
 
     bot = AsyncMock()
-    bot.create_forum_topic = AsyncMock(
-        side_effect=TelegramError("Bad Request: topics are not enabled in the chat")
-    )
+    bot.create_forum_topic = AsyncMock(side_effect=TelegramError("Bad Request: topics are not enabled in the chat"))
 
     with pytest.raises(PrivateTopicsUnavailableError):
         await manager.sync_topics(bot, chat_id=123456)
 
 
-async def test_sync_renames_existing_topic_and_updates_mapping(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_renames_existing_topic_and_updates_mapping(tmp_path: Path, db_manager) -> None:
     """When project name changes, manager renames topic and stores new name."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -177,7 +169,7 @@ async def test_sync_renames_existing_topic_and_updates_mapping(
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: Pretty Name\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: Pretty Name\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -207,9 +199,7 @@ async def test_sync_renames_existing_topic_and_updates_mapping(
     assert mapping.topic_name == "Pretty Name"
 
 
-async def test_sync_rename_failure_keeps_old_mapping_for_retry(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_rename_failure_keeps_old_mapping_for_retry(tmp_path: Path, db_manager) -> None:
     """Failed rename should not overwrite stored topic name."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -217,7 +207,7 @@ async def test_sync_rename_failure_keeps_old_mapping_for_retry(
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: Pretty Name\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: Pretty Name\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -247,9 +237,7 @@ async def test_sync_rename_failure_keeps_old_mapping_for_retry(
     assert mapping.topic_name == "Old Name"
 
 
-async def test_sync_reused_mapping_skips_rename_when_name_matches(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_reused_mapping_skips_rename_when_name_matches(tmp_path: Path, db_manager) -> None:
     """When DB name already matches, sync should not call topic rename."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -257,7 +245,7 @@ async def test_sync_reused_mapping_skips_rename_when_name_matches(
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: Pretty Name\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: Pretty Name\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -295,9 +283,7 @@ async def test_sync_create_sends_bootstrap_message(tmp_path: Path, db_manager) -
     manager = ProjectThreadManager(registry, repo)
 
     bot = AsyncMock()
-    bot.create_forum_topic = AsyncMock(
-        return_value=SimpleNamespace(message_thread_id=101)
-    )
+    bot.create_forum_topic = AsyncMock(return_value=SimpleNamespace(message_thread_id=101))
     bot.send_message = AsyncMock()
     bot.edit_forum_topic = AsyncMock()
 
@@ -310,9 +296,7 @@ async def test_sync_create_sends_bootstrap_message(tmp_path: Path, db_manager) -
     assert kwargs["message_thread_id"] == 101
 
 
-async def test_sync_recreates_active_mapping_when_topic_unusable(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_recreates_active_mapping_when_topic_unusable(tmp_path: Path, db_manager) -> None:
     """Active mapping with unusable topic is recreated and remapped."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -320,7 +304,7 @@ async def test_sync_recreates_active_mapping_when_topic_unusable(
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: App One\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: App One\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -336,12 +320,8 @@ async def test_sync_recreates_active_mapping_when_topic_unusable(
 
     manager = ProjectThreadManager(registry, repo)
     bot = AsyncMock()
-    bot.reopen_forum_topic = AsyncMock(
-        side_effect=TelegramError("Bad Request: topic deleted")
-    )
-    bot.create_forum_topic = AsyncMock(
-        return_value=SimpleNamespace(message_thread_id=2002)
-    )
+    bot.reopen_forum_topic = AsyncMock(side_effect=TelegramError("Bad Request: topic deleted"))
+    bot.create_forum_topic = AsyncMock(return_value=SimpleNamespace(message_thread_id=2002))
     bot.send_message = AsyncMock()
 
     result = await manager.sync_topics(bot, chat_id=42)
@@ -361,7 +341,7 @@ async def test_sync_reopen_inactive_mapping(tmp_path: Path, db_manager) -> None:
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: App One\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: App One\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -389,9 +369,7 @@ async def test_sync_reopen_inactive_mapping(tmp_path: Path, db_manager) -> None:
     assert mapping.is_active is True
 
 
-async def test_sync_reopen_unusable_inactive_mapping_recreates(
-    tmp_path: Path, db_manager
-) -> None:
+async def test_sync_reopen_unusable_inactive_mapping_recreates(tmp_path: Path, db_manager) -> None:
     """Inactive mapping with dead topic is recreated."""
     approved = tmp_path / "projects"
     approved.mkdir()
@@ -399,7 +377,7 @@ async def test_sync_reopen_unusable_inactive_mapping_recreates(
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app1\n" "    name: App One\n" "    path: app1\n",
+        "projects:\n  - slug: app1\n    name: App One\n    path: app1\n",
         encoding="utf-8",
     )
     registry = load_project_registry(config_file, approved)
@@ -415,12 +393,8 @@ async def test_sync_reopen_unusable_inactive_mapping_recreates(
 
     manager = ProjectThreadManager(registry, repo)
     bot = AsyncMock()
-    bot.reopen_forum_topic = AsyncMock(
-        side_effect=TelegramError("Bad Request: message thread not found")
-    )
-    bot.create_forum_topic = AsyncMock(
-        return_value=SimpleNamespace(message_thread_id=3003)
-    )
+    bot.reopen_forum_topic = AsyncMock(side_effect=TelegramError("Bad Request: message thread not found"))
+    bot.create_forum_topic = AsyncMock(return_value=SimpleNamespace(message_thread_id=3003))
     bot.send_message = AsyncMock()
 
     result = await manager.sync_topics(bot, chat_id=42)

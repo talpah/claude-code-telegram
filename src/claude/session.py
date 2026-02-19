@@ -11,7 +11,7 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Union
 
 import structlog
 
@@ -50,7 +50,7 @@ class ClaudeSession:
     total_cost: float = 0.0
     total_turns: int = 0
     message_count: int = 0
-    tools_used: List[str] = field(default_factory=list)
+    tools_used: list[str] = field(default_factory=list)
     is_new_session: bool = False  # True if session hasn't been sent to Claude Code yet
 
     def is_expired(self, timeout_hours: int) -> bool:
@@ -72,7 +72,7 @@ class ClaudeSession:
                 if tool_name and tool_name not in self.tools_used:
                     self.tools_used.append(tool_name)
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         """Convert session to dictionary for storage."""
         return {
             "session_id": self.session_id,
@@ -87,7 +87,7 @@ class ClaudeSession:
         }
 
     @classmethod
-    def from_dict(cls, data: Dict) -> "ClaudeSession":
+    def from_dict(cls, data: dict) -> "ClaudeSession":
         """Create session from dictionary."""
         return cls(
             session_id=data["session_id"],
@@ -109,7 +109,7 @@ class SessionStorage:
         """Save session to storage."""
         raise NotImplementedError
 
-    async def load_session(self, session_id: str) -> Optional[ClaudeSession]:
+    async def load_session(self, session_id: str) -> ClaudeSession | None:
         """Load session from storage."""
         raise NotImplementedError
 
@@ -117,11 +117,11 @@ class SessionStorage:
         """Delete session from storage."""
         raise NotImplementedError
 
-    async def get_user_sessions(self, user_id: int) -> List[ClaudeSession]:
+    async def get_user_sessions(self, user_id: int) -> list[ClaudeSession]:
         """Get all sessions for a user."""
         raise NotImplementedError
 
-    async def get_all_sessions(self) -> List[ClaudeSession]:
+    async def get_all_sessions(self) -> list[ClaudeSession]:
         """Get all sessions."""
         raise NotImplementedError
 
@@ -131,14 +131,14 @@ class InMemorySessionStorage(SessionStorage):
 
     def __init__(self):
         """Initialize in-memory storage."""
-        self.sessions: Dict[str, ClaudeSession] = {}
+        self.sessions: dict[str, ClaudeSession] = {}
 
     async def save_session(self, session: ClaudeSession) -> None:
         """Save session to memory."""
         self.sessions[session.session_id] = session
         logger.debug("Session saved to memory", session_id=session.session_id)
 
-    async def load_session(self, session_id: str) -> Optional[ClaudeSession]:
+    async def load_session(self, session_id: str) -> ClaudeSession | None:
         """Load session from memory."""
         session = self.sessions.get(session_id)
         if session:
@@ -151,13 +151,11 @@ class InMemorySessionStorage(SessionStorage):
             del self.sessions[session_id]
             logger.debug("Session deleted from memory", session_id=session_id)
 
-    async def get_user_sessions(self, user_id: int) -> List[ClaudeSession]:
+    async def get_user_sessions(self, user_id: int) -> list[ClaudeSession]:
         """Get all sessions for a user."""
-        return [
-            session for session in self.sessions.values() if session.user_id == user_id
-        ]
+        return [session for session in self.sessions.values() if session.user_id == user_id]
 
-    async def get_all_sessions(self) -> List[ClaudeSession]:
+    async def get_all_sessions(self) -> list[ClaudeSession]:
         """Get all sessions."""
         return list(self.sessions.values())
 
@@ -169,13 +167,13 @@ class SessionManager:
         """Initialize session manager."""
         self.config = config
         self.storage = storage
-        self.active_sessions: Dict[str, ClaudeSession] = {}
+        self.active_sessions: dict[str, ClaudeSession] = {}
 
     async def get_or_create_session(
         self,
         user_id: int,
         project_path: Path,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
     ) -> ClaudeSession:
         """Get existing session or create new one."""
         logger.info(
@@ -245,11 +243,7 @@ class SessionManager:
             old_session_id = session.session_id
 
             # For new sessions, update to Claude's actual session ID
-            if (
-                hasattr(session, "is_new_session")
-                and session.is_new_session
-                and response.session_id
-            ):
+            if hasattr(session, "is_new_session") and session.is_new_session and response.session_id:
                 # Remove old temporary session
                 del self.active_sessions[old_session_id]
                 await self.storage.delete_session(old_session_id)
@@ -305,11 +299,11 @@ class SessionManager:
         logger.info("Session cleanup completed", expired_sessions=expired_count)
         return expired_count
 
-    async def _get_user_sessions(self, user_id: int) -> List[ClaudeSession]:
+    async def _get_user_sessions(self, user_id: int) -> list[ClaudeSession]:
         """Get all sessions for a user."""
         return await self.storage.get_user_sessions(user_id)
 
-    async def get_session_info(self, session_id: str) -> Optional[Dict]:
+    async def get_session_info(self, session_id: str) -> dict | None:
         """Get session information."""
         session = self.active_sessions.get(session_id)
 
@@ -331,15 +325,13 @@ class SessionManager:
 
         return None
 
-    async def get_user_session_summary(self, user_id: int) -> Dict:
+    async def get_user_session_summary(self, user_id: int) -> dict:
         """Get summary of user's sessions."""
         sessions = await self._get_user_sessions(user_id)
 
         total_cost = sum(s.total_cost for s in sessions)
         total_messages = sum(s.message_count for s in sessions)
-        active_sessions = [
-            s for s in sessions if not s.is_expired(self.config.session_timeout_hours)
-        ]
+        active_sessions = [s for s in sessions if not s.is_expired(self.config.session_timeout_hours)]
 
         return {
             "user_id": user_id,

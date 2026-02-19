@@ -25,7 +25,6 @@ Usage:
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
@@ -40,13 +39,13 @@ class ConversationContext:
     """Context information for a conversation."""
 
     user_id: int
-    session_id: Optional[str] = None
-    project_path: Optional[str] = None
-    last_tools_used: List[str] = field(default_factory=list)
+    session_id: str | None = None
+    project_path: str | None = None
+    last_tools_used: list[str] = field(default_factory=list)
     last_response_content: str = ""
     conversation_turn: int = 0
     has_errors: bool = False
-    active_files: List[str] = field(default_factory=list)
+    active_files: list[str] = field(default_factory=list)
     todo_count: int = 0
 
     def update_from_response(self, response: ClaudeResponse) -> None:
@@ -67,9 +66,7 @@ class ConversationContext:
 
         # Count TODOs/FIXMEs in response
         todo_keywords = ["todo", "fixme", "note", "hack", "bug"]
-        self.todo_count = sum(
-            1 for keyword in todo_keywords if keyword in self.last_response_content
-        )
+        self.todo_count = sum(1 for keyword in todo_keywords if keyword in self.last_response_content)
 
 
 class ConversationEnhancer:
@@ -77,7 +74,7 @@ class ConversationEnhancer:
 
     def __init__(self) -> None:
         """Initialize conversation enhancer."""
-        self.conversation_contexts: Dict[int, ConversationContext] = {}
+        self.conversation_contexts: dict[int, ConversationContext] = {}
 
     def get_or_create_context(self, user_id: int) -> ConversationContext:
         """Get or create conversation context for user."""
@@ -99,9 +96,7 @@ class ConversationEnhancer:
             tools_used=context.last_tools_used,
         )
 
-    def generate_follow_up_suggestions(
-        self, response: ClaudeResponse, context: ConversationContext
-    ) -> List[str]:
+    def generate_follow_up_suggestions(self, response: ClaudeResponse, context: ConversationContext) -> list[str]:
         """Generate relevant follow-up suggestions."""
         suggestions = []
 
@@ -174,9 +169,7 @@ class ConversationEnhancer:
                 ]
             )
 
-        if "test" in content_lower and (
-            "fail" in content_lower or "error" in content_lower
-        ):
+        if "test" in content_lower and ("fail" in content_lower or "error" in content_lower):
             suggestions.extend(
                 [
                     "Fix the failing tests",
@@ -208,18 +201,14 @@ class ConversationEnhancer:
             suggestions.append("Continue with the next step")
 
         if context.has_errors:
-            suggestions.extend(
-                ["Investigate the error further", "Try a different approach"]
-            )
+            suggestions.extend(["Investigate the error further", "Try a different approach"])
 
         if context.todo_count > 0:
             suggestions.append("Address the TODO items")
 
         # General suggestions based on development patterns
         if any(keyword in content_lower for keyword in ["function", "class", "method"]):
-            suggestions.extend(
-                ["Add unit tests", "Improve documentation", "Add type hints"]
-            )
+            suggestions.extend(["Add unit tests", "Improve documentation", "Add type hints"])
 
         if "performance" in content_lower or "optimize" in content_lower:
             suggestions.extend(
@@ -238,16 +227,13 @@ class ConversationEnhancer:
 
         # High priority: error handling and fixes
         for suggestion in unique_suggestions:
-            if any(
-                keyword in suggestion.lower() for keyword in ["error", "debug", "fix"]
-            ):
+            if any(keyword in suggestion.lower() for keyword in ["error", "debug", "fix"]):
                 prioritized.append(suggestion)
 
         # Medium priority: development workflow
         for suggestion in unique_suggestions:
             if suggestion not in prioritized and any(
-                keyword in suggestion.lower()
-                for keyword in ["test", "review", "verify"]
+                keyword in suggestion.lower() for keyword in ["test", "review", "verify"]
             ):
                 prioritized.append(suggestion)
 
@@ -259,7 +245,7 @@ class ConversationEnhancer:
         # Return top 3-4 most relevant suggestions
         return prioritized[:4]
 
-    def create_follow_up_keyboard(self, suggestions: List[str]) -> InlineKeyboardMarkup:
+    def create_follow_up_keyboard(self, suggestions: list[str]) -> InlineKeyboardMarkup:
         """Create keyboard with follow-up suggestions."""
         if not suggestions:
             return InlineKeyboardMarkup([])
@@ -270,23 +256,13 @@ class ConversationEnhancer:
         for suggestion in suggestions[:4]:
             # Create a shorter hash for callback data
             suggestion_hash = str(hash(suggestion) % 1000000)
-            keyboard.append(
-                [
-                    InlineKeyboardButton(
-                        f"💡 {suggestion}", callback_data=f"followup:{suggestion_hash}"
-                    )
-                ]
-            )
+            keyboard.append([InlineKeyboardButton(f"💡 {suggestion}", callback_data=f"followup:{suggestion_hash}")])
 
         # Add control buttons
         keyboard.append(
             [
-                InlineKeyboardButton(
-                    "✅ Continue Coding", callback_data="conversation:continue"
-                ),
-                InlineKeyboardButton(
-                    "🛑 End Session", callback_data="conversation:end"
-                ),
+                InlineKeyboardButton("✅ Continue Coding", callback_data="conversation:continue"),
+                InlineKeyboardButton("🛑 End Session", callback_data="conversation:end"),
             ]
         )
 
@@ -329,20 +305,16 @@ class ConversationEnhancer:
         response: ClaudeResponse,
         context: ConversationContext,
         max_content_length: int = 3000,
-    ) -> tuple[str, Optional[InlineKeyboardMarkup]]:
+    ) -> tuple[str, InlineKeyboardMarkup | None]:
         """Format response with follow-up suggestions."""
         # Truncate content if too long for Telegram
         content = response.content
         if len(content) > max_content_length:
-            content = (
-                content[:max_content_length] + "\n\n... <i>(response truncated)</i>"
-            )
+            content = content[:max_content_length] + "\n\n... <i>(response truncated)</i>"
 
         # Add session info if this is a new session
         if context.conversation_turn == 1 and response.session_id:
-            session_info = (
-                f"\n\n🆔 <b>Session:</b> <code>{response.session_id[:8]}...</code>"
-            )
+            session_info = f"\n\n🆔 <b>Session:</b> <code>{response.session_id[:8]}...</code>"
             content += session_info
 
         # Add cost info if significant
@@ -370,7 +342,7 @@ class ConversationEnhancer:
             del self.conversation_contexts[user_id]
             logger.debug("Cleared conversation context", user_id=user_id)
 
-    def get_context_summary(self, user_id: int) -> Optional[Dict]:
+    def get_context_summary(self, user_id: int) -> dict | None:
         """Get summary of conversation context."""
         context = self.conversation_contexts.get(user_id)
         if not context:

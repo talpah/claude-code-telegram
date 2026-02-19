@@ -346,9 +346,7 @@ class TestProjectThreadRepository:
         )
 
         assert changed == 1
-        inactive_mapping = await project_thread_repo.get_by_chat_project(
-            -1001234567890, "app2"
-        )
+        inactive_mapping = await project_thread_repo.get_by_chat_project(-1001234567890, "app2")
         assert inactive_mapping is not None
         assert inactive_mapping.is_active is False
 
@@ -493,9 +491,7 @@ class TestToolUsageRepository:
 class TestAnalyticsRepository:
     """Test analytics repository."""
 
-    async def test_get_system_stats(
-        self, analytics_repo, message_repo, session_repo, user_repo
-    ):
+    async def test_get_system_stats(self, analytics_repo, message_repo, session_repo, user_repo):
         """Test getting system statistics."""
         # Setup test data
         user = UserModel(

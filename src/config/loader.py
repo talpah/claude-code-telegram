@@ -2,7 +2,7 @@
 
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 from dotenv import load_dotenv
@@ -15,9 +15,7 @@ from .settings import Settings
 logger = structlog.get_logger()
 
 
-def load_config(
-    env: Optional[str] = None, config_file: Optional[Path] = None
-) -> Settings:
+def load_config(env: str | None = None, config_file: Path | None = None) -> Settings:
     """Load configuration based on environment.
 
     Args:
@@ -77,7 +75,7 @@ def load_config(
         raise ConfigurationError(f"Configuration loading failed: {e}") from e
 
 
-def _apply_environment_overrides(settings: Settings, env: Optional[str]) -> Settings:
+def _apply_environment_overrides(settings: Settings, env: str | None) -> Settings:
     """Apply environment-specific configuration overrides."""
     overrides = {}
 
@@ -94,9 +92,7 @@ def _apply_environment_overrides(settings: Settings, env: Optional[str]) -> Sett
     for key, value in overrides.items():
         if hasattr(settings, key):
             setattr(settings, key, value)
-            logger.debug(
-                "Applied environment override", key=key, value=value, environment=env
-            )
+            logger.debug("Applied environment override", key=key, value=value, environment=env)
 
     return settings
 
@@ -106,9 +102,7 @@ def _validate_config(settings: Settings) -> None:
     # Check file system permissions
     try:
         if not os.access(settings.approved_directory, os.R_OK | os.X_OK):
-            raise InvalidConfigError(
-                f"Cannot access approved directory: {settings.approved_directory}"
-            )
+            raise InvalidConfigError(f"Cannot access approved directory: {settings.approved_directory}")
     except OSError as e:
         raise InvalidConfigError(f"Error accessing approved directory: {e}") from e
 
@@ -120,21 +114,12 @@ def _validate_config(settings: Settings) -> None:
         raise InvalidConfigError("Token auth enabled but no secret provided")
 
     if settings.enable_project_threads:
-        if (
-            settings.project_threads_mode == "group"
-            and settings.project_threads_chat_id is None
-        ):
-            raise InvalidConfigError(
-                "Project thread mode is 'group' but no project_threads_chat_id provided"
-            )
+        if settings.project_threads_mode == "group" and settings.project_threads_chat_id is None:
+            raise InvalidConfigError("Project thread mode is 'group' but no project_threads_chat_id provided")
         if not settings.projects_config_path:
-            raise InvalidConfigError(
-                "Project thread mode enabled but no projects_config_path provided"
-            )
+            raise InvalidConfigError("Project thread mode enabled but no projects_config_path provided")
         if not settings.projects_config_path.exists():
-            raise InvalidConfigError(
-                f"Projects config not found: {settings.projects_config_path}"
-            )
+            raise InvalidConfigError(f"Projects config not found: {settings.projects_config_path}")
 
     # Validate database path for SQLite
     if settings.database_url.startswith("sqlite:///"):

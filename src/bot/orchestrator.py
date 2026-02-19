@@ -8,8 +8,9 @@ classic mode, delegates to existing full-featured handlers.
 import asyncio
 import re
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import structlog
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -31,7 +32,7 @@ from .utils.html_format import escape_html
 logger = structlog.get_logger()
 
 # Patterns that look like secrets/credentials in CLI arguments
-_SECRET_PATTERNS: List[re.Pattern[str]] = [
+_SECRET_PATTERNS: list[re.Pattern[str]] = [
     # API keys / tokens (sk-ant-..., sk-..., ghp_..., gho_..., github_pat_..., xoxb-...)
     re.compile(
         r"(sk-ant-api\d*-[A-Za-z0-9_-]{10})[A-Za-z0-9_-]*"
@@ -73,7 +74,7 @@ def _redact_secrets(text: str) -> str:
 
 
 # Tool name -> friendly emoji mapping for verbose output
-_TOOL_ICONS: Dict[str, str] = {
+_TOOL_ICONS: dict[str, str] = {
     "Read": "\U0001f4d6",
     "Write": "\u270f\ufe0f",
     "Edit": "\u270f\ufe0f",
@@ -100,7 +101,7 @@ def _tool_icon(name: str) -> str:
 class MessageOrchestrator:
     """Routes messages based on mode. Single entry point for all Telegram updates."""
 
-    def __init__(self, settings: Settings, deps: Dict[str, Any]):
+    def __init__(self, settings: Settings, deps: dict[str, Any]):
         self.settings = settings
         self.deps = deps
 
@@ -120,9 +121,7 @@ class MessageOrchestrator:
 
             if should_enforce:
                 if self.settings.project_threads_mode == "private":
-                    should_enforce = not is_sync_bypass and not (
-                        is_start_bypass and message_thread_id is None
-                    )
+                    should_enforce = not is_sync_bypass and not (is_start_bypass and message_thread_id is None)
                 else:
                     should_enforce = not is_sync_bypass
 
@@ -139,16 +138,13 @@ class MessageOrchestrator:
 
         return wrapped
 
-    async def _apply_thread_routing_context(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> bool:
+    async def _apply_thread_routing_context(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Enforce strict project-thread routing and load thread-local state."""
         manager = context.bot_data.get("project_threads_manager")
         if manager is None:
             await self._reject_for_thread_mode(
                 update,
-                "❌ <b>Project Thread Mode Misconfigured</b>\n\n"
-                "Thread manager is not initialized.",
+                "❌ <b>Project Thread Mode Misconfigured</b>\n\nThread manager is not initialized.",
             )
             return False
 
@@ -194,9 +190,7 @@ class MessageOrchestrator:
 
         project_root = project.absolute_path
         current_dir_raw = state.get("current_directory")
-        current_dir = (
-            Path(current_dir_raw).resolve() if current_dir_raw else project_root
-        )
+        current_dir = Path(current_dir_raw).resolve() if current_dir_raw else project_root
         if not self._is_within(current_dir, project_root) or not current_dir.is_dir():
             current_dir = project_root
 
@@ -243,7 +237,7 @@ class MessageOrchestrator:
             return False
 
     @staticmethod
-    def _extract_message_thread_id(update: Update) -> Optional[int]:
+    def _extract_message_thread_id(update: Update) -> int | None:
         """Extract topic/thread id from update message for forum/direct topics."""
         message = update.effective_message
         if not message:
@@ -308,9 +302,7 @@ class MessageOrchestrator:
 
         # File uploads -> Claude
         app.add_handler(
-            MessageHandler(
-                filters.Document.ALL, self._inject_deps(self.agentic_document)
-            ),
+            MessageHandler(filters.Document.ALL, self._inject_deps(self.agentic_document)),
             group=10,
         )
 
@@ -363,18 +355,14 @@ class MessageOrchestrator:
             group=10,
         )
         app.add_handler(
-            MessageHandler(
-                filters.Document.ALL, self._inject_deps(message.handle_document)
-            ),
+            MessageHandler(filters.Document.ALL, self._inject_deps(message.handle_document)),
             group=10,
         )
         app.add_handler(
             MessageHandler(filters.PHOTO, self._inject_deps(message.handle_photo)),
             group=10,
         )
-        app.add_handler(
-            CallbackQueryHandler(self._inject_deps(callback.handle_callback_query))
-        )
+        app.add_handler(CallbackQueryHandler(self._inject_deps(callback.handle_callback_query)))
 
         logger.info("Classic handlers registered (13 commands + full handler set)")
 
@@ -413,20 +401,12 @@ class MessageOrchestrator:
 
     # --- Agentic handlers ---
 
-    async def agentic_start(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Brief welcome, no buttons."""
         user = update.effective_user
         sync_line = ""
-        if (
-            self.settings.enable_project_threads
-            and self.settings.project_threads_mode == "private"
-        ):
-            if (
-                not update.effective_chat
-                or getattr(update.effective_chat, "type", "") != "private"
-            ):
+        if self.settings.enable_project_threads and self.settings.project_threads_mode == "private":
+            if not update.effective_chat or getattr(update.effective_chat, "type", "") != "private":
                 await update.message.reply_text(
                     "🚫 <b>Private Topics Mode</b>\n\n"
                     "Use this bot in a private chat and run <code>/start</code> there.",
@@ -440,10 +420,7 @@ class MessageOrchestrator:
                         context.bot,
                         chat_id=update.effective_chat.id,
                     )
-                    sync_line = (
-                        "\n\n🧵 Topics synced"
-                        f" (created {result.created}, reused {result.reused})."
-                    )
+                    sync_line = f"\n\n🧵 Topics synced (created {result.created}, reused {result.reused})."
                 except PrivateTopicsUnavailableError:
                     await update.message.reply_text(
                         manager.private_topics_unavailable_message(),
@@ -452,9 +429,7 @@ class MessageOrchestrator:
                     return
                 except Exception:
                     sync_line = "\n\n🧵 Topic sync failed. Run /sync_threads to retry."
-        current_dir = context.user_data.get(
-            "current_directory", self.settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
         dir_display = f"<code>{current_dir}/</code>"
 
         safe_name = escape_html(user.first_name)
@@ -467,9 +442,7 @@ class MessageOrchestrator:
             parse_mode="HTML",
         )
 
-    async def agentic_new(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Reset session, one-line confirmation."""
         context.user_data["claude_session_id"] = None
         context.user_data["session_started"] = True
@@ -477,13 +450,9 @@ class MessageOrchestrator:
 
         await update.message.reply_text("Session reset. What's next?")
 
-    async def agentic_status(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Compact one-line status, no buttons."""
-        current_dir = context.user_data.get(
-            "current_directory", self.settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
         dir_display = str(current_dir)
 
         session_id = context.user_data.get("claude_session_id")
@@ -501,9 +470,7 @@ class MessageOrchestrator:
             except Exception:
                 pass
 
-        await update.message.reply_text(
-            f"📂 {dir_display} · Session: {session_status}{cost_str}"
-        )
+        await update.message.reply_text(f"📂 {dir_display} · Session: {session_status}{cost_str}")
 
     def _get_verbose_level(self, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Return effective verbose level: per-user override or global default."""
@@ -512,9 +479,7 @@ class MessageOrchestrator:
             return int(user_override)
         return self.settings.verbose_level
 
-    async def agentic_verbose(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_verbose(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Set output verbosity: /verbose [0|1|2]."""
         args = update.message.text.split()[1:] if update.message.text else []
         if not args:
@@ -535,9 +500,7 @@ class MessageOrchestrator:
             if level not in (0, 1, 2):
                 raise ValueError
         except ValueError:
-            await update.message.reply_text(
-                "Please use: /verbose 0, /verbose 1, or /verbose 2"
-            )
+            await update.message.reply_text("Please use: /verbose 0, /verbose 1, or /verbose 2")
             return
 
         context.user_data["verbose_level"] = level
@@ -549,7 +512,7 @@ class MessageOrchestrator:
 
     def _format_verbose_progress(
         self,
-        activity_log: List[Dict[str, Any]],
+        activity_log: list[dict[str, Any]],
         verbose_level: int,
         start_time: float,
     ) -> str:
@@ -558,7 +521,7 @@ class MessageOrchestrator:
             return "Working..."
 
         elapsed = time.time() - start_time
-        lines: List[str] = [f"Working... ({elapsed:.0f}s)\n"]
+        lines: list[str] = [f"Working... ({elapsed:.0f}s)\n"]
 
         for entry in activity_log[-15:]:  # Show last 15 entries max
             kind = entry.get("kind", "tool")
@@ -584,7 +547,7 @@ class MessageOrchestrator:
         return "\n".join(lines)
 
     @staticmethod
-    def _summarize_tool_input(tool_name: str, tool_input: Dict[str, Any]) -> str:
+    def _summarize_tool_input(tool_name: str, tool_input: dict[str, Any]) -> str:
         """Return a short summary of tool input for verbose level 2."""
         if not tool_input:
             return ""
@@ -642,9 +605,9 @@ class MessageOrchestrator:
         self,
         verbose_level: int,
         progress_msg: Any,
-        tool_log: List[Dict[str, Any]],
+        tool_log: list[dict[str, Any]],
         start_time: float,
-    ) -> Optional[Callable[[StreamUpdate], Any]]:
+    ) -> Callable[[StreamUpdate], Any] | None:
         """Create a stream callback for verbose progress updates.
 
         Returns None when verbose_level is 0 (nothing to display).
@@ -676,9 +639,7 @@ class MessageOrchestrator:
             now = time.time()
             if (now - last_edit_time[0]) >= 2.0 and tool_log:
                 last_edit_time[0] = now
-                new_text = self._format_verbose_progress(
-                    tool_log, verbose_level, start_time
-                )
+                new_text = self._format_verbose_progress(tool_log, verbose_level, start_time)
                 try:
                     await progress_msg.edit_text(new_text)
                 except Exception:
@@ -686,9 +647,7 @@ class MessageOrchestrator:
 
         return _on_stream
 
-    async def agentic_text(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Direct Claude passthrough. Simple progress. No suggestions."""
         user_id = update.effective_user.id
         message_text = update.message.text
@@ -715,14 +674,10 @@ class MessageOrchestrator:
 
         claude_integration = context.bot_data.get("claude_integration")
         if not claude_integration:
-            await progress_msg.edit_text(
-                "Claude integration not available. Check configuration."
-            )
+            await progress_msg.edit_text("Claude integration not available. Check configuration.")
             return
 
-        current_dir = context.user_data.get(
-            "current_directory", self.settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
         session_id = context.user_data.get("claude_session_id")
 
         # Check if /new was used — skip auto-resume for this first message.
@@ -730,11 +685,9 @@ class MessageOrchestrator:
         force_new = bool(context.user_data.get("force_new_session"))
 
         # --- Verbose progress tracking via stream callback ---
-        tool_log: List[Dict[str, Any]] = []
+        tool_log: list[dict[str, Any]] = []
         start_time = time.time()
-        on_stream = self._make_stream_callback(
-            verbose_level, progress_msg, tool_log, start_time
-        )
+        on_stream = self._make_stream_callback(verbose_level, progress_msg, tool_log, start_time)
 
         # Independent typing heartbeat — stays alive even with no stream events
         heartbeat = self._start_typing_heartbeat(chat)
@@ -759,9 +712,7 @@ class MessageOrchestrator:
             # Track directory changes
             from .handlers.message import _update_working_directory_from_claude_response
 
-            _update_working_directory_from_claude_response(
-                claude_response, context, self.settings, user_id
-            )
+            _update_working_directory_from_claude_response(claude_response, context, self.settings, user_id)
 
             # Store interaction
             storage = context.bot_data.get("storage")
@@ -781,9 +732,7 @@ class MessageOrchestrator:
             from .utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(self.settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
         except ClaudeToolValidationError as e:
             success = False
@@ -798,9 +747,7 @@ class MessageOrchestrator:
             from .handlers.message import _format_error_message
             from .utils.formatting import FormattedMessage
 
-            formatted_messages = [
-                FormattedMessage(_format_error_message(str(e)), parse_mode="HTML")
-            ]
+            formatted_messages = [FormattedMessage(_format_error_message(str(e)), parse_mode="HTML")]
         finally:
             heartbeat.cancel()
 
@@ -826,16 +773,12 @@ class MessageOrchestrator:
                     await update.message.reply_text(
                         message.text,
                         reply_markup=None,
-                        reply_to_message_id=(
-                            update.message.message_id if i == 0 else None
-                        ),
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
                 except Exception:
                     await update.message.reply_text(
                         "Failed to send response. Please try again.",
-                        reply_to_message_id=(
-                            update.message.message_id if i == 0 else None
-                        ),
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
 
         # Audit log
@@ -848,9 +791,7 @@ class MessageOrchestrator:
                 success=success,
             )
 
-    async def agentic_document(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Process file upload -> Claude, minimal chrome."""
         user_id = update.effective_user.id
         document = update.message.document
@@ -872,9 +813,7 @@ class MessageOrchestrator:
         # Size check
         max_size = 10 * 1024 * 1024
         if document.file_size > max_size:
-            await update.message.reply_text(
-                f"File too large ({document.file_size / 1024 / 1024:.1f}MB). Max: 10MB."
-            )
+            await update.message.reply_text(f"File too large ({document.file_size / 1024 / 1024:.1f}MB). Max: 10MB.")
             return
 
         chat = update.message.chat
@@ -884,7 +823,7 @@ class MessageOrchestrator:
         # Try enhanced file handler, fall back to basic
         features = context.bot_data.get("features")
         file_handler = features.get_file_handler() if features else None
-        prompt: Optional[str] = None
+        prompt: str | None = None
 
         if file_handler:
             try:
@@ -905,27 +844,18 @@ class MessageOrchestrator:
                 if len(content) > 50000:
                     content = content[:50000] + "\n... (truncated)"
                 caption = update.message.caption or "Please review this file:"
-                prompt = (
-                    f"{caption}\n\n**File:** `{document.file_name}`\n\n"
-                    f"```\n{content}\n```"
-                )
+                prompt = f"{caption}\n\n**File:** `{document.file_name}`\n\n```\n{content}\n```"
             except UnicodeDecodeError:
-                await progress_msg.edit_text(
-                    "Unsupported file format. Must be text-based (UTF-8)."
-                )
+                await progress_msg.edit_text("Unsupported file format. Must be text-based (UTF-8).")
                 return
 
         # Process with Claude
         claude_integration = context.bot_data.get("claude_integration")
         if not claude_integration:
-            await progress_msg.edit_text(
-                "Claude integration not available. Check configuration."
-            )
+            await progress_msg.edit_text("Claude integration not available. Check configuration.")
             return
 
-        current_dir = context.user_data.get(
-            "current_directory", self.settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
         session_id = context.user_data.get("claude_session_id")
 
         # Check if /new was used — skip auto-resume for this first message.
@@ -933,10 +863,8 @@ class MessageOrchestrator:
         force_new = bool(context.user_data.get("force_new_session"))
 
         verbose_level = self._get_verbose_level(context)
-        tool_log: List[Dict[str, Any]] = []
-        on_stream = self._make_stream_callback(
-            verbose_level, progress_msg, tool_log, time.time()
-        )
+        tool_log: list[dict[str, Any]] = []
+        on_stream = self._make_stream_callback(verbose_level, progress_msg, tool_log, time.time())
 
         heartbeat = self._start_typing_heartbeat(chat)
         try:
@@ -956,16 +884,12 @@ class MessageOrchestrator:
 
             from .handlers.message import _update_working_directory_from_claude_response
 
-            _update_working_directory_from_claude_response(
-                claude_response, context, self.settings, user_id
-            )
+            _update_working_directory_from_claude_response(claude_response, context, self.settings, user_id)
 
             from .utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(self.settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
             await progress_msg.delete()
 
@@ -982,16 +906,12 @@ class MessageOrchestrator:
         except Exception as e:
             from .handlers.message import _format_error_message
 
-            await progress_msg.edit_text(
-                _format_error_message(str(e)), parse_mode="HTML"
-            )
+            await progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
             logger.error("Claude file processing failed", error=str(e), user_id=user_id)
         finally:
             heartbeat.cancel()
 
-    async def agentic_photo(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Process photo -> Claude, minimal chrome."""
         user_id = update.effective_user.id
 
@@ -1008,20 +928,14 @@ class MessageOrchestrator:
 
         try:
             photo = update.message.photo[-1]
-            processed_image = await image_handler.process_image(
-                photo, update.message.caption
-            )
+            processed_image = await image_handler.process_image(photo, update.message.caption)
 
             claude_integration = context.bot_data.get("claude_integration")
             if not claude_integration:
-                await progress_msg.edit_text(
-                    "Claude integration not available. Check configuration."
-                )
+                await progress_msg.edit_text("Claude integration not available. Check configuration.")
                 return
 
-            current_dir = context.user_data.get(
-                "current_directory", self.settings.approved_directory
-            )
+            current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
             session_id = context.user_data.get("claude_session_id")
 
             # Check if /new was used — skip auto-resume for this first message.
@@ -1029,10 +943,8 @@ class MessageOrchestrator:
             force_new = bool(context.user_data.get("force_new_session"))
 
             verbose_level = self._get_verbose_level(context)
-            tool_log: List[Dict[str, Any]] = []
-            on_stream = self._make_stream_callback(
-                verbose_level, progress_msg, tool_log, time.time()
-            )
+            tool_log: list[dict[str, Any]] = []
+            on_stream = self._make_stream_callback(verbose_level, progress_msg, tool_log, time.time())
 
             heartbeat = self._start_typing_heartbeat(chat)
             try:
@@ -1055,9 +967,7 @@ class MessageOrchestrator:
             from .utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(self.settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
             await progress_msg.delete()
 
@@ -1074,16 +984,10 @@ class MessageOrchestrator:
         except Exception as e:
             from .handlers.message import _format_error_message
 
-            await progress_msg.edit_text(
-                _format_error_message(str(e)), parse_mode="HTML"
-            )
-            logger.error(
-                "Claude photo processing failed", error=str(e), user_id=user_id
-            )
+            await progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
+            logger.error("Claude photo processing failed", error=str(e), user_id=user_id)
 
-    async def agentic_repo(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def agentic_repo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List repos in workspace or switch to one.
 
         /repo          — list subdirectories with git indicators
@@ -1110,9 +1014,7 @@ class MessageOrchestrator:
             claude_integration = context.bot_data.get("claude_integration")
             session_id = None
             if claude_integration:
-                existing = await claude_integration._find_resumable_session(
-                    update.effective_user.id, target_path
-                )
+                existing = await claude_integration._find_resumable_session(update.effective_user.id, target_path)
                 if existing:
                     session_id = existing.session_id
             context.user_data["claude_session_id"] = session_id
@@ -1122,8 +1024,7 @@ class MessageOrchestrator:
             session_badge = " · session resumed" if session_id else ""
 
             await update.message.reply_text(
-                f"Switched to <code>{escape_html(target_name)}/</code>"
-                f"{git_badge}{session_badge}",
+                f"Switched to <code>{escape_html(target_name)}/</code>{git_badge}{session_badge}",
                 parse_mode="HTML",
             )
             return
@@ -1131,11 +1032,7 @@ class MessageOrchestrator:
         # No args — list repos
         try:
             entries = sorted(
-                [
-                    d
-                    for d in base.iterdir()
-                    if d.is_dir() and not d.name.startswith(".")
-                ],
+                [d for d in base.iterdir() if d.is_dir() and not d.name.startswith(".")],
                 key=lambda d: d.name,
             )
         except OSError as e:
@@ -1150,8 +1047,8 @@ class MessageOrchestrator:
             )
             return
 
-        lines: List[str] = []
-        keyboard_rows: List[list] = []  # type: ignore[type-arg]
+        lines: list[str] = []
+        keyboard_rows: list[list] = []  # type: ignore[type-arg]
         current_name = current_dir.name if current_dir != base else None
 
         for d in entries:
@@ -1177,9 +1074,7 @@ class MessageOrchestrator:
             reply_markup=reply_markup,
         )
 
-    async def _agentic_callback(
-        self, update: Update, context: ContextTypes.DEFAULT_TYPE
-    ) -> None:
+    async def _agentic_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle cd: callbacks — switch directory and resume session if available."""
         query = update.callback_query
         await query.answer()
@@ -1203,9 +1098,7 @@ class MessageOrchestrator:
         claude_integration = context.bot_data.get("claude_integration")
         session_id = None
         if claude_integration:
-            existing = await claude_integration._find_resumable_session(
-                query.from_user.id, new_path
-            )
+            existing = await claude_integration._find_resumable_session(query.from_user.id, new_path)
             if existing:
                 session_id = existing.session_id
         context.user_data["claude_session_id"] = session_id
@@ -1215,8 +1108,7 @@ class MessageOrchestrator:
         session_badge = " · session resumed" if session_id else ""
 
         await query.edit_message_text(
-            f"Switched to <code>{escape_html(project_name)}/</code>"
-            f"{git_badge}{session_badge}",
+            f"Switched to <code>{escape_html(project_name)}/</code>{git_badge}{session_badge}",
             parse_mode="HTML",
         )
 

@@ -1,7 +1,6 @@
 """Telegram forum topic synchronization and project resolution."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 import structlog
 from telegram import Bot
@@ -75,9 +74,7 @@ class ProjectThreadManager:
 
             except TelegramError as e:
                 if self._is_private_topics_unavailable_error(e):
-                    raise PrivateTopicsUnavailableError(
-                        "Private chat topics are not enabled for this bot chat."
-                    ) from e
+                    raise PrivateTopicsUnavailableError("Private chat topics are not enabled for this bot chat.") from e
                 result.failed += 1
                 logger.error(
                     "Failed to sync project topic",
@@ -107,9 +104,7 @@ class ProjectThreadManager:
                 result.closed += 1
             except TelegramError as e:
                 if self._is_private_topics_unavailable_error(e):
-                    raise PrivateTopicsUnavailableError(
-                        "Private chat topics are not enabled for this bot chat."
-                    ) from e
+                    raise PrivateTopicsUnavailableError("Private chat topics are not enabled for this bot chat.") from e
                 result.failed += 1
                 logger.warning(
                     "Could not close stale topic",
@@ -234,9 +229,7 @@ class ProjectThreadManager:
             )
             return "failed"
 
-    async def _reopen_topic_if_possible(
-        self, bot: Bot, mapping: ProjectThreadModel
-    ) -> str:
+    async def _reopen_topic_if_possible(self, bot: Bot, mapping: ProjectThreadModel) -> str:
         """Reopen inactive topic. Returns reopened|unusable|failed."""
         try:
             await bot.reopen_forum_topic(
@@ -255,9 +248,7 @@ class ProjectThreadManager:
             )
             return "failed"
 
-    async def resolve_project(
-        self, chat_id: int, message_thread_id: int
-    ) -> Optional[ProjectDefinition]:
+    async def resolve_project(self, chat_id: int, message_thread_id: int) -> ProjectDefinition | None:
         """Resolve mapped project for chat+thread."""
         mapping = await self.repository.get_by_chat_thread(chat_id, message_thread_id)
         if not mapping:
@@ -273,9 +264,7 @@ class ProjectThreadManager:
     def guidance_message(mode: str = "group") -> str:
         """Guidance text for strict routing rejections."""
         context_label = (
-            "mapped project topic in this private chat"
-            if mode == "private"
-            else "mapped project forum topic"
+            "mapped project topic in this private chat" if mode == "private" else "mapped project forum topic"
         )
         return (
             "🚫 <b>Project Thread Required</b>\n\n"

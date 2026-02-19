@@ -212,9 +212,7 @@ class TestClaudeSDKManager:
         """Test that MCP config is passed to ClaudeAgentOptions when enabled."""
         # Create a valid MCP config file
         mcp_config_file = tmp_path / "mcp_config.json"
-        mcp_config_file.write_text(
-            '{"mcpServers": {"test-server": {"command": "echo", "args": ["hello"]}}}'
-        )
+        mcp_config_file.write_text('{"mcpServers": {"test-server": {"command": "echo", "args": ["hello"]}}}')
 
         config = Settings(
             telegram_bot_token="test:token",
@@ -243,9 +241,7 @@ class TestClaudeSDKManager:
 
         # Verify MCP config was parsed and passed as dict to options
         assert len(captured_options) == 1
-        assert captured_options[0].mcp_servers == {
-            "test-server": {"command": "echo", "args": ["hello"]}
-        }
+        assert captured_options[0].mcp_servers == {"test-server": {"command": "echo", "args": ["hello"]}}
 
     async def test_execute_command_no_mcp_when_disabled(self, sdk_manager):
         """Test that MCP config is NOT passed when MCP is disabled."""
@@ -310,9 +306,7 @@ class TestClaudeSandboxSettings:
             "excludedCommands": ["git", "npm"],
         }
 
-    async def test_system_prompt_set_with_working_directory(
-        self, sdk_manager, tmp_path
-    ):
+    async def test_system_prompt_set_with_working_directory(self, sdk_manager, tmp_path):
         """Test that system_prompt references the working directory."""
         captured_options = []
 

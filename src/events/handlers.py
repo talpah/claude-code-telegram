@@ -5,7 +5,7 @@ NotificationHandler: subscribes to AgentResponseEvent and delivers to Telegram.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 
@@ -94,9 +94,7 @@ class AgentHandler:
 
         prompt = event.prompt
         if event.skill_name:
-            prompt = (
-                f"/{event.skill_name}\n\n{prompt}" if prompt else f"/{event.skill_name}"
-            )
+            prompt = f"/{event.skill_name}\n\n{prompt}" if prompt else f"/{event.skill_name}"
 
         working_dir = event.working_directory or self.default_working_directory
 
@@ -145,9 +143,9 @@ class AgentHandler:
             f"Highlight anything that needs my attention."
         )
 
-    def _summarize_payload(self, payload: Dict[str, Any], max_depth: int = 2) -> str:
+    def _summarize_payload(self, payload: dict[str, Any], max_depth: int = 2) -> str:
         """Create a readable summary of a webhook payload."""
-        lines: List[str] = []
+        lines: list[str] = []
         self._flatten_dict(payload, lines, max_depth=max_depth)
         # Cap at 2000 chars to keep prompt reasonable
         summary = "\n".join(lines)

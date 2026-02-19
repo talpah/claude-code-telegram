@@ -7,9 +7,10 @@ routed to registered handlers.
 
 import asyncio
 import uuid
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
-from typing import Any, Callable, Coroutine, Dict, List, Optional, Type
+from typing import Any
 
 import structlog
 
@@ -40,15 +41,15 @@ class EventBus:
     """
 
     def __init__(self) -> None:
-        self._handlers: Dict[Type[Event], List[EventHandler]] = {}
-        self._global_handlers: List[EventHandler] = []
+        self._handlers: dict[type[Event], list[EventHandler]] = {}
+        self._global_handlers: list[EventHandler] = []
         self._running = False
         self._queue: asyncio.Queue[Event] = asyncio.Queue()
-        self._processor_task: Optional[asyncio.Task[None]] = None
+        self._processor_task: asyncio.Task[None] | None = None
 
     def subscribe(
         self,
-        event_type: Type[Event],
+        event_type: type[Event],
         handler: EventHandler,
     ) -> None:
         """Register a handler for a specific event type."""
@@ -101,7 +102,7 @@ class EventBus:
         while self._running:
             try:
                 event = await asyncio.wait_for(self._queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -110,7 +111,7 @@ class EventBus:
 
     async def _dispatch(self, event: Event) -> None:
         """Dispatch event to all matching handlers concurrently."""
-        handlers: List[EventHandler] = []
+        handlers: list[EventHandler] = []
 
         # Collect type-specific handlers (including parent classes)
         for event_type, type_handlers in self._handlers.items():

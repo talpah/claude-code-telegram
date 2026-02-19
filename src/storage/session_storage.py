@@ -5,7 +5,6 @@ Replaces the in-memory session storage with SQLite persistence.
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import List, Optional
 
 import structlog
 
@@ -23,15 +22,11 @@ class SQLiteSessionStorage(SessionStorage):
         """Initialize with database manager."""
         self.db_manager = db_manager
 
-    async def _ensure_user_exists(
-        self, user_id: int, username: Optional[str] = None
-    ) -> None:
+    async def _ensure_user_exists(self, user_id: int, username: str | None = None) -> None:
         """Ensure user exists in database before creating session."""
         async with self.db_manager.get_connection() as conn:
             # Check if user exists
-            cursor = await conn.execute(
-                "SELECT user_id FROM users WHERE user_id = ?", (user_id,)
-            )
+            cursor = await conn.execute("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
             user_exists = await cursor.fetchone()
 
             if not user_exists:
@@ -121,12 +116,10 @@ class SQLiteSessionStorage(SessionStorage):
             user_id=session.user_id,
         )
 
-    async def load_session(self, session_id: str) -> Optional[ClaudeSession]:
+    async def load_session(self, session_id: str) -> ClaudeSession | None:
         """Load session from database."""
         async with self.db_manager.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
             row = await cursor.fetchone()
 
             if not row:
@@ -166,7 +159,7 @@ class SQLiteSessionStorage(SessionStorage):
 
         logger.debug("Session marked as inactive", session_id=session_id)
 
-    async def get_user_sessions(self, user_id: int) -> List[ClaudeSession]:
+    async def get_user_sessions(self, user_id: int) -> list[ClaudeSession]:
         """Get all active sessions for a user."""
         async with self.db_manager.get_connection() as conn:
             cursor = await conn.execute(
@@ -197,12 +190,10 @@ class SQLiteSessionStorage(SessionStorage):
 
             return sessions
 
-    async def get_all_sessions(self) -> List[ClaudeSession]:
+    async def get_all_sessions(self) -> list[ClaudeSession]:
         """Get all active sessions."""
         async with self.db_manager.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM sessions WHERE is_active = TRUE ORDER BY last_used DESC"
-            )
+            cursor = await conn.execute("SELECT * FROM sessions WHERE is_active = TRUE ORDER BY last_used DESC")
             rows = await cursor.fetchall()
 
             sessions = []

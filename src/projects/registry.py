@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import yaml
 
@@ -21,32 +20,30 @@ class ProjectDefinition:
 class ProjectRegistry:
     """In-memory validated project registry."""
 
-    def __init__(self, projects: List[ProjectDefinition]) -> None:
+    def __init__(self, projects: list[ProjectDefinition]) -> None:
         self._projects = projects
-        self._by_slug: Dict[str, ProjectDefinition] = {p.slug: p for p in projects}
+        self._by_slug: dict[str, ProjectDefinition] = {p.slug: p for p in projects}
 
     @property
-    def projects(self) -> List[ProjectDefinition]:
+    def projects(self) -> list[ProjectDefinition]:
         """Return all projects."""
         return list(self._projects)
 
-    def list_enabled(self) -> List[ProjectDefinition]:
+    def list_enabled(self) -> list[ProjectDefinition]:
         """Return enabled projects only."""
         return [p for p in self._projects if p.enabled]
 
-    def get_by_slug(self, slug: str) -> Optional[ProjectDefinition]:
+    def get_by_slug(self, slug: str) -> ProjectDefinition | None:
         """Get project by slug."""
         return self._by_slug.get(slug)
 
 
-def load_project_registry(
-    config_path: Path, approved_directory: Path
-) -> ProjectRegistry:
+def load_project_registry(config_path: Path, approved_directory: Path) -> ProjectRegistry:
     """Load and validate project definitions from YAML."""
     if not config_path.exists():
         raise ValueError(f"Projects config file does not exist: {config_path}")
 
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(config_path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
 
     if not isinstance(data, dict):
@@ -60,7 +57,7 @@ def load_project_registry(
     seen_slugs = set()
     seen_names = set()
     seen_rel_paths = set()
-    projects: List[ProjectDefinition] = []
+    projects: list[ProjectDefinition] = []
 
     for idx, raw in enumerate(raw_projects):
         if not isinstance(raw, dict):
@@ -87,15 +84,10 @@ def load_project_registry(
         try:
             absolute_path.relative_to(approved_root)
         except ValueError as e:
-            raise ValueError(
-                f"Project '{slug}' path outside approved " f"directory: {rel_path_raw}"
-            ) from e
+            raise ValueError(f"Project '{slug}' path outside approved directory: {rel_path_raw}") from e
 
         if not absolute_path.exists() or not absolute_path.is_dir():
-            raise ValueError(
-                f"Project '{slug}' path does not exist or "
-                f"is not a directory: {absolute_path}"
-            )
+            raise ValueError(f"Project '{slug}' path does not exist or is not a directory: {absolute_path}")
 
         rel_path_norm = str(rel_path)
         if slug in seen_slugs:

@@ -15,7 +15,6 @@ import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List
 
 from telegram import Document
 
@@ -29,19 +28,19 @@ class ProcessedFile:
 
     type: str
     prompt: str
-    metadata: Dict[str, any]
+    metadata: dict[str, any]
 
 
 @dataclass
 class CodebaseAnalysis:
     """Codebase analysis result"""
 
-    languages: Dict[str, int]
-    frameworks: List[str]
-    entry_points: List[str]
+    languages: dict[str, int]
+    frameworks: list[str]
+    entry_points: list[str]
     todo_count: int
     test_coverage: bool
-    file_stats: Dict[str, int]
+    file_stats: dict[str, int]
 
 
 class FileHandler:
@@ -130,9 +129,7 @@ class FileHandler:
             ".xml": "XML",
         }
 
-    async def handle_document_upload(
-        self, document: Document, user_id: int, context: str = ""
-    ) -> ProcessedFile:
+    async def handle_document_upload(self, document: Document, user_id: int, context: str = "") -> ProcessedFile:
         """Process uploaded document"""
 
         # Download file
@@ -184,10 +181,10 @@ class FileHandler:
 
         # Check if text
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 f.read(1024)  # Try reading first 1KB
             return "text"
-        except (UnicodeDecodeError, IOError):
+        except (OSError, UnicodeDecodeError):
             return "binary"
 
     async def _process_archive(self, archive_path: Path, context: str) -> ProcessedFile:
@@ -315,9 +312,7 @@ class FileHandler:
                 tree_lines.append(self._build_file_tree(item, sub_prefix))
             else:
                 size = item.stat().st_size
-                tree_lines.append(
-                    f"{prefix}{current_prefix}{item.name} ({self._format_size(size)})"
-                )
+                tree_lines.append(f"{prefix}{current_prefix}{item.name} ({self._format_size(size)})")
 
         return "\n".join(filter(None, tree_lines))
 
@@ -329,17 +324,14 @@ class FileHandler:
             size /= 1024.0
         return f"{size:.1f}TB"
 
-    def _find_code_files(self, directory: Path) -> List[Path]:
+    def _find_code_files(self, directory: Path) -> list[Path]:
         """Find all code files in directory"""
         code_files = []
 
         for file_path in directory.rglob("*"):
             if file_path.is_file() and file_path.suffix.lower() in self.code_extensions:
                 # Skip common non-code directories
-                if any(
-                    part in file_path.parts
-                    for part in ["node_modules", "__pycache__", ".git", "dist", "build"]
-                ):
+                if any(part in file_path.parts for part in ["node_modules", "__pycache__", ".git", "dist", "build"]):
                     continue
                 code_files.append(file_path)
 
@@ -413,7 +405,7 @@ class FileHandler:
 
         return analysis
 
-    def _find_entry_points(self, directory: Path) -> List[str]:
+    def _find_entry_points(self, directory: Path) -> list[str]:
         """Find likely entry points in the codebase"""
         entry_points = []
 
@@ -444,7 +436,7 @@ class FileHandler:
 
         return entry_points
 
-    def _detect_frameworks(self, directory: Path) -> List[str]:
+    def _detect_frameworks(self, directory: Path) -> list[str]:
         """Detect frameworks and libraries used"""
         frameworks = []
 
@@ -494,7 +486,7 @@ class FileHandler:
 
         return todo_count
 
-    def _find_test_files(self, directory: Path) -> List[Path]:
+    def _find_test_files(self, directory: Path) -> list[Path]:
         """Find test files in the codebase"""
         test_files = []
 

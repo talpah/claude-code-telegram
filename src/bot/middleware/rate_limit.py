@@ -1,15 +1,14 @@
 """Rate limiting middleware for Telegram bot."""
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger()
 
 
-async def rate_limit_middleware(
-    handler: Callable, event: Any, data: Dict[str, Any]
-) -> Any:
+async def rate_limit_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Check rate limits before processing messages.
 
     This middleware:
@@ -19,11 +18,7 @@ async def rate_limit_middleware(
     4. Provides helpful error messages
     """
     user_id = event.effective_user.id if event.effective_user else None
-    username = (
-        getattr(event.effective_user, "username", None)
-        if event.effective_user
-        else None
-    )
+    username = getattr(event.effective_user, "username", None) if event.effective_user else None
 
     if not user_id:
         logger.warning("No user information in update")
@@ -43,7 +38,9 @@ async def rate_limit_middleware(
 
     # Check rate limits
     allowed, message = await rate_limiter.check_rate_limit(
-        user_id=user_id, cost=estimated_cost, tokens=1  # One token per message
+        user_id=user_id,
+        cost=estimated_cost,
+        tokens=1,  # One token per message
     )
 
     if not allowed:
@@ -128,9 +125,7 @@ def estimate_message_cost(event: Any) -> float:
     return base_cost + length_cost
 
 
-async def cost_tracking_middleware(
-    handler: Callable, event: Any, data: Dict[str, Any]
-) -> Any:
+async def cost_tracking_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Track actual costs after processing.
 
     This middleware runs after the main handler to track
@@ -179,9 +174,7 @@ async def cost_tracking_middleware(
         raise
 
 
-async def burst_protection_middleware(
-    handler: Callable, event: Any, data: Dict[str, Any]
-) -> Any:
+async def burst_protection_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Additional burst protection for high-frequency requests.
 
     This middleware provides an additional layer of protection
@@ -191,9 +184,7 @@ async def burst_protection_middleware(
 
     # Get or create burst tracker
     burst_tracker = data.setdefault("burst_tracker", {})
-    user_burst_data = burst_tracker.setdefault(
-        user_id, {"recent_requests": [], "warnings_sent": 0}
-    )
+    user_burst_data = burst_tracker.setdefault(user_id, {"recent_requests": [], "warnings_sent": 0})
 
     import time
 
@@ -201,9 +192,7 @@ async def burst_protection_middleware(
 
     # Clean old requests (older than 10 seconds)
     user_burst_data["recent_requests"] = [
-        req_time
-        for req_time in user_burst_data["recent_requests"]
-        if current_time - req_time < 10
+        req_time for req_time in user_burst_data["recent_requests"] if current_time - req_time < 10
     ]
 
     # Add current request

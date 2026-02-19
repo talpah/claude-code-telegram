@@ -5,7 +5,7 @@ Receives external webhooks and publishes them as events on the bus.
 """
 
 import uuid
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -22,7 +22,7 @@ logger = structlog.get_logger()
 def create_api_app(
     event_bus: EventBus,
     settings: Settings,
-    db_manager: Optional[DatabaseManager] = None,
+    db_manager: DatabaseManager | None = None,
 ) -> FastAPI:
     """Create the FastAPI application."""
 
@@ -34,18 +34,18 @@ def create_api_app(
     )
 
     @app.get("/health")
-    async def health_check() -> Dict[str, str]:
+    async def health_check() -> dict[str, str]:
         return {"status": "ok"}
 
     @app.post("/webhooks/{provider}")
     async def receive_webhook(
         provider: str,
         request: Request,
-        x_hub_signature_256: Optional[str] = Header(None),
-        x_github_event: Optional[str] = Header(None),
-        x_github_delivery: Optional[str] = Header(None),
-        authorization: Optional[str] = Header(None),
-    ) -> Dict[str, str]:
+        x_hub_signature_256: str | None = Header(None),
+        x_github_event: str | None = Header(None),
+        x_github_delivery: str | None = Header(None),
+        authorization: str | None = Header(None),
+    ) -> dict[str, str]:
         """Receive and validate webhook from an external provider."""
         body = await request.body()
 
@@ -85,7 +85,7 @@ def create_api_app(
 
         # Parse JSON payload
         try:
-            payload: Dict[str, Any] = await request.json()
+            payload: dict[str, Any] = await request.json()
         except Exception:
             payload = {"raw_body": body.decode("utf-8", errors="replace")[:5000]}
 
@@ -139,7 +139,7 @@ async def _try_record_webhook(
     provider: str,
     event_type: str,
     delivery_id: str,
-    payload: Dict[str, Any],
+    payload: dict[str, Any],
 ) -> bool:
     """Atomically insert a webhook event, returning whether it was new.
 
@@ -175,7 +175,7 @@ async def _try_record_webhook(
 async def run_api_server(
     event_bus: EventBus,
     settings: Settings,
-    db_manager: Optional[DatabaseManager] = None,
+    db_manager: DatabaseManager | None = None,
 ) -> None:
     """Run the FastAPI server using uvicorn."""
     import uvicorn

@@ -10,7 +10,7 @@ Features:
 
 import json
 from pathlib import Path
-from typing import Any, List, Literal, Optional
+from typing import Any, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -32,29 +32,19 @@ class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
     # Bot settings
-    telegram_bot_token: SecretStr = Field(
-        ..., description="Telegram bot token from BotFather"
-    )
+    telegram_bot_token: SecretStr = Field(..., description="Telegram bot token from BotFather")
     telegram_bot_username: str = Field(..., description="Bot username without @")
 
     # Security
     approved_directory: Path = Field(..., description="Base directory for projects")
-    allowed_users: Optional[List[int]] = Field(
-        None, description="Allowed Telegram user IDs"
-    )
-    enable_token_auth: bool = Field(
-        False, description="Enable token-based authentication"
-    )
-    auth_token_secret: Optional[SecretStr] = Field(
-        None, description="Secret for auth tokens"
-    )
+    allowed_users: list[int] | None = Field(None, description="Allowed Telegram user IDs")
+    enable_token_auth: bool = Field(False, description="Enable token-based authentication")
+    auth_token_secret: SecretStr | None = Field(None, description="Secret for auth tokens")
 
     # Security relaxation (for trusted environments)
     disable_security_patterns: bool = Field(
         False,
-        description=(
-            "Disable dangerous pattern validation (pipes, redirections, etc.)"
-        ),
+        description=("Disable dangerous pattern validation (pipes, redirections, etc.)"),
     )
     disable_tool_validation: bool = Field(
         False,
@@ -62,30 +52,18 @@ class Settings(BaseSettings):
     )
 
     # Claude settings
-    claude_binary_path: Optional[str] = Field(
-        None, description="Path to Claude CLI binary (deprecated)"
-    )
-    claude_cli_path: Optional[str] = Field(
-        None, description="Path to Claude CLI executable"
-    )
-    anthropic_api_key: Optional[SecretStr] = Field(
+    claude_binary_path: str | None = Field(None, description="Path to Claude CLI binary (deprecated)")
+    claude_cli_path: str | None = Field(None, description="Path to Claude CLI executable")
+    anthropic_api_key: SecretStr | None = Field(
         None,
         description="Anthropic API key for SDK (optional if CLI logged in)",
     )
-    claude_model: str = Field(
-        "claude-3-5-sonnet-20241022", description="Claude model to use"
-    )
-    claude_max_turns: int = Field(
-        DEFAULT_CLAUDE_MAX_TURNS, description="Max conversation turns"
-    )
-    claude_timeout_seconds: int = Field(
-        DEFAULT_CLAUDE_TIMEOUT_SECONDS, description="Claude timeout"
-    )
-    claude_max_cost_per_user: float = Field(
-        DEFAULT_CLAUDE_MAX_COST_PER_USER, description="Max cost per user"
-    )
+    claude_model: str = Field("claude-3-5-sonnet-20241022", description="Claude model to use")
+    claude_max_turns: int = Field(DEFAULT_CLAUDE_MAX_TURNS, description="Max conversation turns")
+    claude_timeout_seconds: int = Field(DEFAULT_CLAUDE_TIMEOUT_SECONDS, description="Claude timeout")
+    claude_max_cost_per_user: float = Field(DEFAULT_CLAUDE_MAX_COST_PER_USER, description="Max cost per user")
     use_sdk: bool = Field(True, description="Use Python SDK instead of CLI subprocess")
-    claude_allowed_tools: Optional[List[str]] = Field(
+    claude_allowed_tools: list[str] | None = Field(
         default=[
             "Read",
             "Write",
@@ -105,7 +83,7 @@ class Settings(BaseSettings):
         ],
         description="List of allowed Claude tools",
     )
-    claude_disallowed_tools: Optional[List[str]] = Field(
+    claude_disallowed_tools: list[str] | None = Field(
         default=[],
         description="List of explicitly disallowed Claude tools/commands",
     )
@@ -115,44 +93,30 @@ class Settings(BaseSettings):
         True,
         description="Enable OS-level bash sandboxing for approved dir",
     )
-    sandbox_excluded_commands: Optional[List[str]] = Field(
+    sandbox_excluded_commands: list[str] | None = Field(
         default=["git", "npm", "pip", "poetry", "make", "docker"],
         description="Commands that run outside the sandbox (need system access)",
     )
 
     # Rate limiting
-    rate_limit_requests: int = Field(
-        DEFAULT_RATE_LIMIT_REQUESTS, description="Requests per window"
-    )
-    rate_limit_window: int = Field(
-        DEFAULT_RATE_LIMIT_WINDOW, description="Rate limit window seconds"
-    )
-    rate_limit_burst: int = Field(
-        DEFAULT_RATE_LIMIT_BURST, description="Burst capacity"
-    )
+    rate_limit_requests: int = Field(DEFAULT_RATE_LIMIT_REQUESTS, description="Requests per window")
+    rate_limit_window: int = Field(DEFAULT_RATE_LIMIT_WINDOW, description="Rate limit window seconds")
+    rate_limit_burst: int = Field(DEFAULT_RATE_LIMIT_BURST, description="Burst capacity")
 
     # Storage
-    database_url: str = Field(
-        DEFAULT_DATABASE_URL, description="Database connection URL"
-    )
-    session_timeout_hours: int = Field(
-        DEFAULT_SESSION_TIMEOUT_HOURS, description="Session timeout"
-    )
+    database_url: str = Field(DEFAULT_DATABASE_URL, description="Database connection URL")
+    session_timeout_hours: int = Field(DEFAULT_SESSION_TIMEOUT_HOURS, description="Session timeout")
     session_timeout_minutes: int = Field(
         default=120,
         description="Session timeout in minutes",
         ge=10,
         le=1440,  # Max 24 hours
     )
-    max_sessions_per_user: int = Field(
-        DEFAULT_MAX_SESSIONS_PER_USER, description="Max concurrent sessions"
-    )
+    max_sessions_per_user: int = Field(DEFAULT_MAX_SESSIONS_PER_USER, description="Max concurrent sessions")
 
     # Features
     enable_mcp: bool = Field(False, description="Enable Model Context Protocol")
-    mcp_config_path: Optional[Path] = Field(
-        None, description="MCP configuration file path"
-    )
+    mcp_config_path: Path | None = Field(None, description="MCP configuration file path")
     enable_git_integration: bool = Field(True, description="Enable git commands")
     enable_file_uploads: bool = Field(True, description="Enable file upload handling")
     enable_quick_actions: bool = Field(True, description="Enable quick action buttons")
@@ -176,14 +140,14 @@ class Settings(BaseSettings):
     # Monitoring
     log_level: str = Field("INFO", description="Logging level")
     enable_telemetry: bool = Field(False, description="Enable anonymous telemetry")
-    sentry_dsn: Optional[str] = Field(None, description="Sentry DSN for error tracking")
+    sentry_dsn: str | None = Field(None, description="Sentry DSN for error tracking")
 
     # Development
     debug: bool = Field(False, description="Enable debug mode")
     development_mode: bool = Field(False, description="Enable development features")
 
     # Webhook settings (optional)
-    webhook_url: Optional[str] = Field(None, description="Webhook URL for bot")
+    webhook_url: str | None = Field(None, description="Webhook URL for bot")
     webhook_port: int = Field(8443, description="Webhook port")
     webhook_path: str = Field("/webhook", description="Webhook path")
 
@@ -191,13 +155,9 @@ class Settings(BaseSettings):
     enable_api_server: bool = Field(False, description="Enable FastAPI webhook server")
     api_server_port: int = Field(8080, description="Webhook API server port")
     enable_scheduler: bool = Field(False, description="Enable job scheduler")
-    github_webhook_secret: Optional[str] = Field(
-        None, description="GitHub webhook HMAC secret"
-    )
-    webhook_api_secret: Optional[str] = Field(
-        None, description="Shared secret for generic webhook providers"
-    )
-    notification_chat_ids: Optional[List[int]] = Field(
+    github_webhook_secret: str | None = Field(None, description="GitHub webhook HMAC secret")
+    webhook_api_secret: str | None = Field(None, description="Shared secret for generic webhook providers")
+    notification_chat_ids: list[int] | None = Field(
         None, description="Default Telegram chat IDs for proactive notifications"
     )
     enable_project_threads: bool = Field(
@@ -208,20 +168,16 @@ class Settings(BaseSettings):
         "private",
         description="Project thread mode: private chat topics or group forum topics",
     )
-    project_threads_chat_id: Optional[int] = Field(
+    project_threads_chat_id: int | None = Field(
         None, description="Telegram forum chat ID where project topics are managed"
     )
-    projects_config_path: Optional[Path] = Field(
-        None, description="Path to YAML project registry for thread mode"
-    )
+    projects_config_path: Path | None = Field(None, description="Path to YAML project registry for thread mode")
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @field_validator("allowed_users", "notification_chat_ids", mode="before")
     @classmethod
-    def parse_int_list(cls, v: Any) -> Optional[List[int]]:
+    def parse_int_list(cls, v: Any) -> list[int] | None:
         """Parse comma-separated integer lists."""
         if v is None:
             return None
@@ -235,7 +191,7 @@ class Settings(BaseSettings):
 
     @field_validator("claude_allowed_tools", mode="before")
     @classmethod
-    def parse_claude_allowed_tools(cls, v: Any) -> Optional[List[str]]:
+    def parse_claude_allowed_tools(cls, v: Any) -> list[str] | None:
         """Parse comma-separated tool names."""
         if v is None:
             return None
@@ -261,7 +217,7 @@ class Settings(BaseSettings):
 
     @field_validator("mcp_config_path", mode="before")
     @classmethod
-    def validate_mcp_config(cls, v: Any, info: Any) -> Optional[Path]:
+    def validate_mcp_config(cls, v: Any, info: Any) -> Path | None:
         """Validate MCP configuration path if MCP is enabled."""
         if not v:
             return v  # type: ignore[no-any-return]
@@ -279,22 +235,17 @@ class Settings(BaseSettings):
             raise ValueError("MCP config file must contain a JSON object")
         if "mcpServers" not in config_data:
             raise ValueError(
-                "MCP config file must contain a 'mcpServers' key. "
-                'Format: {"mcpServers": {"name": {"command": ...}}}'
+                'MCP config file must contain a \'mcpServers\' key. Format: {"mcpServers": {"name": {"command": ...}}}'
             )
         if not isinstance(config_data["mcpServers"], dict):
-            raise ValueError(
-                "'mcpServers' must be an object mapping server names to configurations"
-            )
+            raise ValueError("'mcpServers' must be an object mapping server names to configurations")
         if not config_data["mcpServers"]:
-            raise ValueError(
-                "'mcpServers' must contain at least one server configuration"
-            )
+            raise ValueError("'mcpServers' must contain at least one server configuration")
         return v  # type: ignore[no-any-return]
 
     @field_validator("projects_config_path", mode="before")
     @classmethod
-    def validate_projects_config_path(cls, v: Any) -> Optional[Path]:
+    def validate_projects_config_path(cls, v: Any) -> Path | None:
         """Validate projects config path if provided."""
         if not v:
             return None
@@ -322,7 +273,7 @@ class Settings(BaseSettings):
 
     @field_validator("project_threads_chat_id", mode="before")
     @classmethod
-    def validate_project_threads_chat_id(cls, v: Any) -> Optional[int]:
+    def validate_project_threads_chat_id(cls, v: Any) -> int | None:
         """Allow empty chat ID for private mode by treating blank values as None."""
         if v is None:
             return None
@@ -349,27 +300,17 @@ class Settings(BaseSettings):
         """Validate dependencies between fields."""
         # Check auth token requirements
         if self.enable_token_auth and not self.auth_token_secret:
-            raise ValueError(
-                "auth_token_secret required when enable_token_auth is True"
-            )
+            raise ValueError("auth_token_secret required when enable_token_auth is True")
 
         # Check MCP requirements
         if self.enable_mcp and not self.mcp_config_path:
             raise ValueError("mcp_config_path required when enable_mcp is True")
 
         if self.enable_project_threads:
-            if (
-                self.project_threads_mode == "group"
-                and self.project_threads_chat_id is None
-            ):
-                raise ValueError(
-                    "project_threads_chat_id required when "
-                    "project_threads_mode is 'group'"
-                )
+            if self.project_threads_mode == "group" and self.project_threads_chat_id is None:
+                raise ValueError("project_threads_chat_id required when project_threads_mode is 'group'")
             if not self.projects_config_path:
-                raise ValueError(
-                    "projects_config_path required when enable_project_threads is True"
-                )
+                raise ValueError("projects_config_path required when enable_project_threads is True")
 
         return self
 
@@ -379,7 +320,7 @@ class Settings(BaseSettings):
         return not (self.debug or self.development_mode)
 
     @property
-    def database_path(self) -> Optional[Path]:
+    def database_path(self) -> Path | None:
         """Extract path from SQLite database URL."""
         if self.database_url.startswith("sqlite:///"):
             db_path = self.database_url.replace("sqlite:///", "")
@@ -392,17 +333,13 @@ class Settings(BaseSettings):
         return self.telegram_bot_token.get_secret_value()
 
     @property
-    def auth_secret_str(self) -> Optional[str]:
+    def auth_secret_str(self) -> str | None:
         """Get auth token secret as string."""
         if self.auth_token_secret:
             return self.auth_token_secret.get_secret_value()
         return None
 
     @property
-    def anthropic_api_key_str(self) -> Optional[str]:
+    def anthropic_api_key_str(self) -> str | None:
         """Get Anthropic API key as string."""
-        return (
-            self.anthropic_api_key.get_secret_value()
-            if self.anthropic_api_key
-            else None
-        )
+        return self.anthropic_api_key.get_secret_value() if self.anthropic_api_key else None

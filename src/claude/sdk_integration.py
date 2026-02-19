@@ -10,9 +10,10 @@ Features:
 import asyncio
 import os
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 import structlog
 from claude_agent_sdk import (
@@ -41,7 +42,7 @@ from .exceptions import (
 logger = structlog.get_logger()
 
 
-def find_claude_cli(claude_cli_path: Optional[str] = None) -> Optional[str]:
+def find_claude_cli(claude_cli_path: str | None = None) -> str | None:
     """Find Claude CLI in common locations."""
     import glob
     import shutil
@@ -84,7 +85,7 @@ def find_claude_cli(claude_cli_path: Optional[str] = None) -> Optional[str]:
     return None
 
 
-def update_path_for_claude(claude_cli_path: Optional[str] = None) -> bool:
+def update_path_for_claude(claude_cli_path: str | None = None) -> bool:
     """Update PATH to include Claude CLI if found."""
     claude_path = find_claude_cli(claude_cli_path)
 
@@ -112,8 +113,8 @@ class ClaudeResponse:
     duration_ms: int
     num_turns: int
     is_error: bool = False
-    error_type: Optional[str] = None
-    tools_used: List[Dict[str, Any]] = field(default_factory=list)
+    error_type: str | None = None
+    tools_used: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -121,9 +122,9 @@ class StreamUpdate:
     """Streaming update from Claude SDK."""
 
     type: str  # 'assistant', 'user', 'system', 'result'
-    content: Optional[str] = None
-    tool_calls: Optional[List[Dict]] = None
-    metadata: Optional[Dict] = None
+    content: str | None = None
+    tool_calls: list[dict] | None = None
+    metadata: dict | None = None
 
 
 class ClaudeSDKManager:
@@ -132,7 +133,7 @@ class ClaudeSDKManager:
     def __init__(self, config: Settings):
         """Initialize SDK manager with configuration."""
         self.config = config
-        self.active_sessions: Dict[str, Dict[str, Any]] = {}
+        self.active_sessions: dict[str, dict[str, Any]] = {}
 
         # Try to find and update PATH for Claude CLI
         if not update_path_for_claude(config.claude_cli_path):
@@ -153,9 +154,9 @@ class ClaudeSDKManager:
         self,
         prompt: str,
         working_directory: Path,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         continue_session: bool = False,
-        stream_callback: Optional[Callable[[StreamUpdate], None]] = None,
+        stream_callback: Callable[[StreamUpdate], None] | None = None,
     ) -> ClaudeResponse:
         """Execute Claude Code command via SDK."""
         start_time = asyncio.get_event_loop().time()
@@ -180,10 +181,7 @@ class ClaudeSDKManager:
                     "autoAllowBashIfSandboxed": True,
                     "excludedCommands": self.config.sandbox_excluded_commands or [],
                 },
-                system_prompt=(
-                    f"All file operations must stay within {working_directory}. "
-                    "Use relative paths."
-                ),
+                system_prompt=(f"All file operations must stay within {working_directory}. Use relative paths."),
             )
 
             # Pass MCP server configuration if enabled
@@ -209,9 +207,7 @@ class ClaudeSDKManager:
 
             # Execute with streaming and timeout
             await asyncio.wait_for(
-                self._execute_query_with_streaming(
-                    prompt, options, messages, stream_callback
-                ),
+                self._execute_query_with_streaming(prompt, options, messages, stream_callback),
                 timeout=self.config.claude_timeout_seconds,
             )
 
@@ -247,24 +243,16 @@ class ClaudeSDKManager:
                 session_id=final_session_id,
                 cost=cost,
                 duration_ms=duration_ms,
-                num_turns=len(
-                    [
-                        m
-                        for m in messages
-                        if isinstance(m, (UserMessage, AssistantMessage))
-                    ]
-                ),
+                num_turns=len([m for m in messages if isinstance(m, (UserMessage, AssistantMessage))]),
                 tools_used=tools_used,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error(
                 "Claude SDK command timed out",
                 timeout_seconds=self.config.claude_timeout_seconds,
             )
-            raise ClaudeTimeoutError(
-                f"Claude SDK timed out after {self.config.claude_timeout_seconds}s"
-            )
+            raise ClaudeTimeoutError(f"Claude SDK timed out after {self.config.claude_timeout_seconds}s")
 
         except CLINotFoundError as e:
             logger.error("Claude CLI not found", error=str(e))
@@ -314,16 +302,12 @@ class ClaudeSDKManager:
                     error=str(e),
                     error_type=type(e).__name__,
                     exception_count=len(getattr(e, "exceptions", [])),
-                    exceptions=[
-                        str(ex) for ex in getattr(e, "exceptions", [])[:3]
-                    ],  # Log first 3 exceptions
+                    exceptions=[str(ex) for ex in getattr(e, "exceptions", [])[:3]],  # Log first 3 exceptions
                 )
                 # Extract the most relevant exception from the group
                 exceptions = getattr(e, "exceptions", [e])
                 main_exception = exceptions[0] if exceptions else e
-                raise ClaudeProcessError(
-                    f"Claude SDK task error: {str(main_exception)}"
-                )
+                raise ClaudeProcessError(f"Claude SDK task error: {str(main_exception)}")
 
             # Check if it's an ExceptionGroup disguised as a regular exception
             elif hasattr(e, "__notes__") and "TaskGroup" in str(e):
@@ -343,7 +327,7 @@ class ClaudeSDKManager:
                 raise ClaudeProcessError(f"Unexpected error: {str(e)}")
 
     async def _execute_query_with_streaming(
-        self, prompt: str, options, messages: List, stream_callback: Optional[Callable]
+        self, prompt: str, options, messages: list, stream_callback: Callable | None
     ) -> None:
         """Execute query with streaming and collect messages."""
         try:
@@ -379,9 +363,7 @@ class ClaudeSDKManager:
             # Re-raise to be handled by the outer try-catch
             raise
 
-    async def _handle_stream_message(
-        self, message: Message, stream_callback: Callable[[StreamUpdate], None]
-    ) -> None:
+    async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], None]) -> None:
         """Handle streaming message from claude-agent-sdk."""
         try:
             if isinstance(message, AssistantMessage):
@@ -430,7 +412,7 @@ class ClaudeSDKManager:
         except Exception as e:
             logger.warning("Stream callback failed", error=str(e))
 
-    def _extract_content_from_messages(self, messages: List[Message]) -> str:
+    def _extract_content_from_messages(self, messages: list[Message]) -> str:
         """Extract content from message list."""
         content_parts = []
 
@@ -448,9 +430,7 @@ class ClaudeSDKManager:
 
         return "\n".join(content_parts)
 
-    def _extract_tools_from_messages(
-        self, messages: List[Message]
-    ) -> List[Dict[str, Any]]:
+    def _extract_tools_from_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         """Extract tools used from message list."""
         tools_used = []
         current_time = asyncio.get_event_loop().time()
@@ -471,7 +451,7 @@ class ClaudeSDKManager:
 
         return tools_used
 
-    def _load_mcp_config(self, config_path: Path) -> Dict[str, Any]:
+    def _load_mcp_config(self, config_path: Path) -> dict[str, Any]:
         """Load MCP server configuration from a JSON file.
 
         The new claude-agent-sdk expects mcp_servers as a dict, not a file path.
@@ -483,12 +463,10 @@ class ClaudeSDKManager:
                 config_data = json.load(f)
             return config_data.get("mcpServers", {})
         except (json.JSONDecodeError, OSError) as e:
-            logger.error(
-                "Failed to load MCP config", path=str(config_path), error=str(e)
-            )
+            logger.error("Failed to load MCP config", path=str(config_path), error=str(e))
             return {}
 
-    def _update_session(self, session_id: str, messages: List[Message]) -> None:
+    def _update_session(self, session_id: str, messages: list[Message]) -> None:
         """Update session data."""
         if session_id not in self.active_sessions:
             self.active_sessions[session_id] = {

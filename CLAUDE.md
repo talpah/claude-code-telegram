@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Telegram bot providing remote access to Claude Code. Python 3.10+, built with Poetry, using `python-telegram-bot` for Telegram and `claude-agent-sdk` for Claude Code integration.
+Telegram bot providing remote access to Claude Code. Python 3.10+, built with uv, using `python-telegram-bot` for Telegram and `claude-agent-sdk` for Claude Code integration.
 
 ## Commands
 
@@ -14,14 +14,14 @@ make install          # Production deps only
 make run              # Run the bot
 make run-debug        # Run with debug logging
 make test             # Run tests with coverage
-make lint             # Black + isort + flake8 + mypy
-make format           # Auto-format with black + isort
+make lint             # ruff check + ruff format --check + ty check
+make format           # Auto-format with ruff format + ruff check --fix
 
 # Run a single test
-poetry run pytest tests/unit/test_config.py -k test_name -v
+uv run pytest tests/unit/test_config.py -k test_name -v
 
 # Type checking only
-poetry run mypy src
+uv run ty check src
 ```
 
 ## Architecture
@@ -112,7 +112,7 @@ All datetimes use timezone-aware UTC: `datetime.now(UTC)` (not `datetime.utcnow(
 
 ## Code Style
 
-- Black (88 char line length), isort (black profile), flake8, mypy strict, autoflake for unused imports
+- ruff format (88 char line length), ruff check (E/W/F/I/UP rules), ty for type checking
 - pytest-asyncio with `asyncio_mode = "auto"`
 - structlog for all logging (JSON in prod, console in dev)
 - Type hints required on all functions (`disallow_untyped_defs = true`)

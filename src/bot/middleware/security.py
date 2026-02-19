@@ -1,6 +1,7 @@
 """Security middleware for input validation and threat detection."""
 
-from typing import Any, Callable, Dict
+from collections.abc import Callable
+from typing import Any
 
 import structlog
 
@@ -9,9 +10,7 @@ from ..utils.html_format import escape_html
 logger = structlog.get_logger()
 
 
-async def security_middleware(
-    handler: Callable, event: Any, data: Dict[str, Any]
-) -> Any:
+async def security_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Validate inputs and detect security threats.
 
     This middleware:
@@ -21,11 +20,7 @@ async def security_middleware(
     4. Logs security violations
     """
     user_id = event.effective_user.id if event.effective_user else None
-    username = (
-        getattr(event.effective_user, "username", None)
-        if event.effective_user
-        else None
-    )
+    username = getattr(event.effective_user, "username", None) if event.effective_user else None
 
     if not user_id:
         logger.warning("No user information in update")
@@ -63,9 +58,7 @@ async def security_middleware(
 
     # Validate file uploads if present
     if message and message.document:
-        is_safe, error_message = await validate_file_upload(
-            message.document, security_validator, user_id, audit_logger
-        )
+        is_safe, error_message = await validate_file_upload(message.document, security_validator, user_id, audit_logger)
         if not is_safe:
             await message.reply_text(
                 f"🛡️ <b>File Upload Blocked</b>\n\n"
@@ -249,7 +242,10 @@ async def validate_file_upload(
                 attempted_action="file_upload",
             )
 
-        return False, f"File too large. Maximum size: {max_file_size // (1024*1024)}MB"
+        return (
+            False,
+            f"File too large. Maximum size: {max_file_size // (1024 * 1024)}MB",
+        )
 
     # Check MIME type
     dangerous_mime_types = [
@@ -301,9 +297,7 @@ async def validate_file_upload(
     return True, ""
 
 
-async def threat_detection_middleware(
-    handler: Callable, event: Any, data: Dict[str, Any]
-) -> Any:
+async def threat_detection_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Advanced threat detection middleware.
 
     This middleware looks for patterns that might indicate
@@ -362,14 +356,10 @@ async def threat_detection_middleware(
 
     import re
 
-    recon_attempts = sum(
-        1 for pattern in recon_patterns if re.search(pattern, text, re.IGNORECASE)
-    )
+    recon_attempts = sum(1 for pattern in recon_patterns if re.search(pattern, text, re.IGNORECASE))
 
     if recon_attempts > 0:
-        user_data["recon_attempts"] = (
-            user_data.get("recon_attempts", 0) + recon_attempts
-        )
+        user_data["recon_attempts"] = user_data.get("recon_attempts", 0) + recon_attempts
 
         # Alert if too many reconnaissance attempts
         if user_data["recon_attempts"] > 5:

@@ -1,7 +1,6 @@
 """Message handlers for non-command inputs."""
 
 import asyncio
-from typing import Optional
 
 import structlog
 from telegram import Update
@@ -17,7 +16,7 @@ from ..utils.html_format import escape_html
 logger = structlog.get_logger()
 
 
-async def _format_progress_update(update_obj) -> Optional[str]:
+async def _format_progress_update(update_obj) -> str | None:
     """Format progress updates with enhanced context and visual indicators."""
     if update_obj.type == "tool_result":
         # Show tool completion status
@@ -67,11 +66,7 @@ async def _format_progress_update(update_obj) -> Optional[str]:
 
     elif update_obj.type == "assistant" and update_obj.content:
         # Regular content updates with preview
-        content_preview = (
-            update_obj.content[:150] + "..."
-            if len(update_obj.content) > 150
-            else update_obj.content
-        )
+        content_preview = update_obj.content[:150] + "..." if len(update_obj.content) > 150 else update_obj.content
         return f"🤖 <b>Claude is working...</b>\n\n<i>{content_preview}</i>"
 
     elif update_obj.type == "system":
@@ -94,30 +89,30 @@ def _format_error_message(error_str: str) -> str:
         return error_str
     elif "no conversation found" in error_str.lower():
         return (
-            f"🔄 <b>Session Not Found</b>\n\n"
-            f"The Claude session could not be found or has expired.\n\n"
-            f"<b>What you can do:</b>\n"
-            f"• Use /new to start a fresh session\n"
-            f"• Try your request again\n"
-            f"• Use /status to check your current session"
+            "🔄 <b>Session Not Found</b>\n\n"
+            "The Claude session could not be found or has expired.\n\n"
+            "<b>What you can do:</b>\n"
+            "• Use /new to start a fresh session\n"
+            "• Try your request again\n"
+            "• Use /status to check your current session"
         )
     elif "rate limit" in error_str.lower():
         return (
-            f"⏱️ <b>Rate Limit Reached</b>\n\n"
-            f"Too many requests in a short time period.\n\n"
-            f"<b>What you can do:</b>\n"
-            f"• Wait a moment before trying again\n"
-            f"• Use simpler requests\n"
-            f"• Check your current usage with /status"
+            "⏱️ <b>Rate Limit Reached</b>\n\n"
+            "Too many requests in a short time period.\n\n"
+            "<b>What you can do:</b>\n"
+            "• Wait a moment before trying again\n"
+            "• Use simpler requests\n"
+            "• Check your current usage with /status"
         )
     elif "timeout" in error_str.lower():
         return (
-            f"⏰ <b>Request Timeout</b>\n\n"
-            f"Your request took too long to process and timed out.\n\n"
-            f"<b>What you can do:</b>\n"
-            f"• Try breaking down your request into smaller parts\n"
-            f"• Use simpler commands\n"
-            f"• Try again in a moment"
+            "⏰ <b>Request Timeout</b>\n\n"
+            "Your request took too long to process and timed out.\n\n"
+            "<b>What you can do:</b>\n"
+            "• Try breaking down your request into smaller parts\n"
+            "• Use simpler commands\n"
+            "• Try again in a moment"
         )
     else:
         # Generic error handling
@@ -134,30 +129,24 @@ def _format_error_message(error_str: str) -> str:
         )
 
 
-async def handle_text_message(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle regular text messages as Claude prompts."""
     user_id = update.effective_user.id
     message_text = update.message.text
     settings: Settings = context.bot_data["settings"]
 
     # Get services
-    rate_limiter: Optional[RateLimiter] = context.bot_data.get("rate_limiter")
-    audit_logger: Optional[AuditLogger] = context.bot_data.get("audit_logger")
+    rate_limiter: RateLimiter | None = context.bot_data.get("rate_limiter")
+    audit_logger: AuditLogger | None = context.bot_data.get("audit_logger")
 
-    logger.info(
-        "Processing text message", user_id=user_id, message_length=len(message_text)
-    )
+    logger.info("Processing text message", user_id=user_id, message_length=len(message_text))
 
     try:
         # Check rate limit with estimated cost for text processing
         estimated_cost = _estimate_text_processing_cost(message_text)
 
         if rate_limiter:
-            allowed, limit_message = await rate_limiter.check_rate_limit(
-                user_id, estimated_cost
-            )
+            allowed, limit_message = await rate_limiter.check_rate_limit(user_id, estimated_cost)
             if not allowed:
                 await update.message.reply_text(f"⏱️ {limit_message}")
                 return
@@ -185,9 +174,7 @@ async def handle_text_message(
             return
 
         # Get current directory
-        current_dir = context.user_data.get(
-            "current_directory", settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
         # Get existing session ID
         session_id = context.user_data.get("claude_session_id")
@@ -224,9 +211,7 @@ async def handle_text_message(
             context.user_data["claude_session_id"] = claude_response.session_id
 
             # Check if Claude changed the working directory and update our tracking
-            _update_working_directory_from_claude_response(
-                claude_response, context, settings, user_id
-            )
+            _update_working_directory_from_claude_response(claude_response, context, settings, user_id)
 
             # Log interaction to storage
             if storage:
@@ -245,9 +230,7 @@ async def handle_text_message(
             from ..utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
         except ClaudeToolValidationError as e:
             # Tool validation error with detailed instructions
@@ -266,9 +249,7 @@ async def handle_text_message(
             # Format error and create FormattedMessage
             from ..utils.formatting import FormattedMessage
 
-            formatted_messages = [
-                FormattedMessage(_format_error_message(str(e)), parse_mode="HTML")
-            ]
+            formatted_messages = [FormattedMessage(_format_error_message(str(e)), parse_mode="HTML")]
 
         # Delete progress message
         await progress_msg.delete()
@@ -297,16 +278,12 @@ async def handle_text_message(
                     await update.message.reply_text(
                         message.text,
                         reply_markup=message.reply_markup,
-                        reply_to_message_id=(
-                            update.message.message_id if i == 0 else None
-                        ),
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
                 except Exception:
                     await update.message.reply_text(
                         "❌ Failed to send response. Please try again.",
-                        reply_to_message_id=(
-                            update.message.message_id if i == 0 else None
-                        ),
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
 
         # Update session info
@@ -314,9 +291,7 @@ async def handle_text_message(
 
         # Add conversation enhancements if available
         features = context.bot_data.get("features")
-        conversation_enhancer = (
-            features.get_conversation_enhancer() if features else None
-        )
+        conversation_enhancer = features.get_conversation_enhancer() if features else None
 
         if conversation_enhancer and claude_response:
             try:
@@ -342,9 +317,7 @@ async def handle_text_message(
 
                     if suggestions:
                         # Create keyboard with suggestions
-                        suggestion_keyboard = (
-                            conversation_enhancer.create_follow_up_keyboard(suggestions)
-                        )
+                        suggestion_keyboard = conversation_enhancer.create_follow_up_keyboard(suggestions)
 
                         # Send follow-up suggestions
                         await update.message.reply_text(
@@ -354,9 +327,7 @@ async def handle_text_message(
                         )
 
             except Exception as e:
-                logger.warning(
-                    "Conversation enhancement failed", error=str(e), user_id=user_id
-                )
+                logger.warning("Conversation enhancement failed", error=str(e), user_id=user_id)
 
         # Log successful message processing
         if audit_logger:
@@ -373,7 +344,7 @@ async def handle_text_message(
         # Clean up progress message if it exists
         try:
             await progress_msg.delete()
-        except:
+        except Exception:
             pass
 
         error_msg = f"❌ <b>Error processing message</b>\n\n{escape_html(str(e))}"
@@ -398,11 +369,9 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     settings: Settings = context.bot_data["settings"]
 
     # Get services
-    security_validator: Optional[SecurityValidator] = context.bot_data.get(
-        "security_validator"
-    )
-    audit_logger: Optional[AuditLogger] = context.bot_data.get("audit_logger")
-    rate_limiter: Optional[RateLimiter] = context.bot_data.get("rate_limiter")
+    security_validator: SecurityValidator | None = context.bot_data.get("security_validator")
+    audit_logger: AuditLogger | None = context.bot_data.get("audit_logger")
+    rate_limiter: RateLimiter | None = context.bot_data.get("rate_limiter")
 
     logger.info(
         "Processing document upload",
@@ -445,9 +414,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         # Check rate limit for file processing
         file_cost = _estimate_file_processing_cost(document.file_size)
         if rate_limiter:
-            allowed, limit_message = await rate_limiter.check_rate_limit(
-                user_id, file_cost
-            )
+            allowed, limit_message = await rate_limiter.check_rate_limit(user_id, file_cost)
             if not allowed:
                 await update.message.reply_text(f"⏱️ {limit_message}")
                 return
@@ -499,10 +466,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                 # Check content length
                 max_content_length = 50000  # 50KB of text
                 if len(content) > max_content_length:
-                    content = (
-                        content[:max_content_length]
-                        + "\n... (file truncated for processing)"
-                    )
+                    content = content[:max_content_length] + "\n... (file truncated for processing)"
 
                 # Create prompt with file content
                 caption = update.message.caption or "Please review this file:"
@@ -525,25 +489,20 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await progress_msg.delete()
 
         # Create a new progress message for Claude processing
-        claude_progress_msg = await update.message.reply_text(
-            "🤖 Processing file with Claude...", parse_mode="HTML"
-        )
+        claude_progress_msg = await update.message.reply_text("🤖 Processing file with Claude...", parse_mode="HTML")
 
         # Get Claude integration from context
         claude_integration = context.bot_data.get("claude_integration")
 
         if not claude_integration:
             await claude_progress_msg.edit_text(
-                "❌ <b>Claude integration not available</b>\n\n"
-                "The Claude Code integration is not properly configured.",
+                "❌ <b>Claude integration not available</b>\n\nThe Claude Code integration is not properly configured.",
                 parse_mode="HTML",
             )
             return
 
         # Get current directory and session
-        current_dir = context.user_data.get(
-            "current_directory", settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", settings.approved_directory)
         session_id = context.user_data.get("claude_session_id")
 
         # Process with Claude
@@ -559,17 +518,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             context.user_data["claude_session_id"] = claude_response.session_id
 
             # Check if Claude changed the working directory and update our tracking
-            _update_working_directory_from_claude_response(
-                claude_response, context, settings, user_id
-            )
+            _update_working_directory_from_claude_response(claude_response, context, settings, user_id)
 
             # Format and send response
             from ..utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
             # Delete progress message
             await claude_progress_msg.delete()
@@ -587,9 +542,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
                     await asyncio.sleep(0.5)
 
         except Exception as e:
-            await claude_progress_msg.edit_text(
-                _format_error_message(str(e)), parse_mode="HTML"
-            )
+            await claude_progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
             logger.error("Claude file processing failed", error=str(e), user_id=user_id)
 
         # Log successful file processing
@@ -605,7 +558,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     except Exception as e:
         try:
             await progress_msg.delete()
-        except:
+        except Exception:
             pass
 
         error_msg = f"❌ <b>Error processing file</b>\n\n{escape_html(str(e))}"
@@ -636,17 +589,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     if image_handler:
         try:
             # Send processing indicator
-            progress_msg = await update.message.reply_text(
-                "📸 Processing image...", parse_mode="HTML"
-            )
+            progress_msg = await update.message.reply_text("📸 Processing image...", parse_mode="HTML")
 
             # Get the largest photo size
             photo = update.message.photo[-1]
 
             # Process image with enhanced handler
-            processed_image = await image_handler.process_image(
-                photo, update.message.caption
-            )
+            processed_image = await image_handler.process_image(photo, update.message.caption)
 
             # Delete progress message
             await progress_msg.delete()
@@ -668,9 +617,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 return
 
             # Get current directory and session
-            current_dir = context.user_data.get(
-                "current_directory", settings.approved_directory
-            )
+            current_dir = context.user_data.get("current_directory", settings.approved_directory)
             session_id = context.user_data.get("claude_session_id")
 
             # Process with Claude
@@ -689,9 +636,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 from ..utils.formatting import ResponseFormatter
 
                 formatter = ResponseFormatter(settings)
-                formatted_messages = formatter.format_claude_response(
-                    claude_response.content
-                )
+                formatted_messages = formatter.format_claude_response(claude_response.content)
 
                 # Delete progress message
                 await claude_progress_msg.delete()
@@ -702,21 +647,15 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                         message.text,
                         parse_mode=message.parse_mode,
                         reply_markup=message.reply_markup,
-                        reply_to_message_id=(
-                            update.message.message_id if i == 0 else None
-                        ),
+                        reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
 
                     if i < len(formatted_messages) - 1:
                         await asyncio.sleep(0.5)
 
             except Exception as e:
-                await claude_progress_msg.edit_text(
-                    _format_error_message(str(e)), parse_mode="HTML"
-                )
-                logger.error(
-                    "Claude image processing failed", error=str(e), user_id=user_id
-                )
+                await claude_progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
+                logger.error("Claude image processing failed", error=str(e), user_id=user_id)
 
         except Exception as e:
             logger.error("Image processing failed", error=str(e), user_id=user_id)
@@ -784,22 +723,16 @@ def _estimate_file_processing_cost(file_size: int) -> float:
     return base_cost + size_cost
 
 
-async def _generate_placeholder_response(
-    message_text: str, context: ContextTypes.DEFAULT_TYPE
-) -> dict:
+async def _generate_placeholder_response(message_text: str, context: ContextTypes.DEFAULT_TYPE) -> dict:
     """Generate placeholder response until Claude integration is implemented."""
     settings: Settings = context.bot_data["settings"]
-    current_dir = getattr(
-        context.user_data, "current_directory", settings.approved_directory
-    )
+    current_dir = getattr(context.user_data, "current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Analyze the message for intent
     message_lower = message_text.lower()
 
-    if any(
-        word in message_lower for word in ["list", "show", "see", "directory", "files"]
-    ):
+    if any(word in message_lower for word in ["list", "show", "see", "directory", "files"]):
         response_text = (
             f"🤖 <b>Claude Code Response</b> <i>(Placeholder)</i>\n\n"
             f"I understand you want to see files. Try using the /ls command to list files "
@@ -826,23 +759,23 @@ async def _generate_placeholder_response(
 
     elif any(word in message_lower for word in ["help", "how", "what", "explain"]):
         response_text = (
-            f"🤖 <b>Claude Code Response</b> <i>(Placeholder)</i>\n\n"
-            f"I'm here to help! Try using /help for available commands.\n\n"
-            f"<b>What I can do now:</b>\n"
-            f"• Navigate directories (/cd, /ls, /pwd)\n"
-            f"• Show projects (/projects)\n"
-            f"• Manage sessions (/new, /status)\n\n"
-            f"<b>Coming soon:</b>\n"
-            f"• Full Claude Code integration\n"
-            f"• Code generation and editing\n"
-            f"• File operations\n"
-            f"• Advanced programming assistance"
+            "🤖 <b>Claude Code Response</b> <i>(Placeholder)</i>\n\n"
+            "I'm here to help! Try using /help for available commands.\n\n"
+            "<b>What I can do now:</b>\n"
+            "• Navigate directories (/cd, /ls, /pwd)\n"
+            "• Show projects (/projects)\n"
+            "• Manage sessions (/new, /status)\n\n"
+            "<b>Coming soon:</b>\n"
+            "• Full Claude Code integration\n"
+            "• Code generation and editing\n"
+            "• File operations\n"
+            "• Advanced programming assistance"
         )
 
     else:
         response_text = (
             f"🤖 <b>Claude Code Response</b> <i>(Placeholder)</i>\n\n"
-            f"I received your message: \"{message_text[:100]}{'...' if len(message_text) > 100 else ''}\"\n\n"
+            f'I received your message: "{message_text[:100]}{"..." if len(message_text) > 100 else ""}"\n\n'
             f"<b>Current Status:</b>\n"
             f"• Directory: <code>{relative_path}/</code>\n"
             f"• Bot core: ✅ Active\n"
@@ -855,9 +788,7 @@ async def _generate_placeholder_response(
     return {"text": response_text, "parse_mode": "HTML"}
 
 
-def _update_working_directory_from_claude_response(
-    claude_response, context, settings, user_id
-):
+def _update_working_directory_from_claude_response(claude_response, context, settings, user_id):
     """Update the working directory based on Claude's response content."""
     import re
     from pathlib import Path
@@ -872,9 +803,7 @@ def _update_working_directory_from_claude_response(
     ]
 
     content = claude_response.content.lower()
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     for pattern in patterns:
         matches = re.findall(pattern, content, re.MULTILINE | re.IGNORECASE)
@@ -894,10 +823,7 @@ def _update_working_directory_from_claude_response(
                     new_path = Path(new_path).resolve()
 
                 # Validate that the new path is within the approved directory
-                if (
-                    new_path.is_relative_to(settings.approved_directory)
-                    and new_path.exists()
-                ):
+                if new_path.is_relative_to(settings.approved_directory) and new_path.exists():
                     context.user_data["current_directory"] = new_path
                     logger.info(
                         "Updated working directory from Claude response",
@@ -909,7 +835,5 @@ def _update_working_directory_from_claude_response(
 
             except (ValueError, OSError) as e:
                 # Invalid path, skip this match
-                logger.debug(
-                    "Invalid path in Claude response", path=match, error=str(e)
-                )
+                logger.debug("Invalid path in Claude response", path=match, error=str(e))
                 continue

@@ -1,6 +1,6 @@
 """Environment-specific configuration overrides."""
 
-from typing import Any, Dict
+from typing import Any
 
 
 class DevelopmentConfig:
@@ -14,14 +14,12 @@ class DevelopmentConfig:
     enable_telemetry: bool = False
 
     @classmethod
-    def as_dict(cls) -> Dict[str, Any]:
+    def as_dict(cls) -> dict[str, Any]:
         """Return config as dictionary."""
         return {
             key: value
             for key, value in cls.__dict__.items()
-            if not key.startswith("_")
-            and not callable(value)
-            and not isinstance(value, classmethod)
+            if not key.startswith("_") and not callable(value) and not isinstance(value, classmethod)
         }
 
 
@@ -38,14 +36,12 @@ class TestingConfig:
     session_timeout_hours: int = 1  # Short session timeout for testing
 
     @classmethod
-    def as_dict(cls) -> Dict[str, Any]:
+    def as_dict(cls) -> dict[str, Any]:
         """Return config as dictionary."""
         return {
             key: value
             for key, value in cls.__dict__.items()
-            if not key.startswith("_")
-            and not callable(value)
-            and not isinstance(value, classmethod)
+            if not key.startswith("_") and not callable(value) and not isinstance(value, classmethod)
         }
 
 
@@ -62,12 +58,10 @@ class ProductionConfig:
     session_timeout_hours: int = 12  # Shorter session timeout
 
     @classmethod
-    def as_dict(cls) -> Dict[str, Any]:
+    def as_dict(cls) -> dict[str, Any]:
         """Return config as dictionary."""
         return {
             key: value
             for key, value in cls.__dict__.items()
-            if not key.startswith("_")
-            and not callable(value)
-            and not isinstance(value, classmethod)
+            if not key.startswith("_") and not callable(value) and not isinstance(value, classmethod)
         }

@@ -9,10 +9,10 @@ Features:
 
 import asyncio
 import sqlite3
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
-from typing import AsyncIterator, List, Tuple
 
 import aiosqlite
 import structlog
@@ -170,9 +170,7 @@ class DatabaseManager:
 
     async def _run_migrations(self):
         """Run database migrations."""
-        async with aiosqlite.connect(
-            self.database_path, detect_types=sqlite3.PARSE_DECLTYPES
-        ) as conn:
+        async with aiosqlite.connect(self.database_path, detect_types=sqlite3.PARSE_DECLTYPES) as conn:
             conn.row_factory = aiosqlite.Row
 
             # Enable foreign keys
@@ -208,11 +206,9 @@ class DatabaseManager:
 
     async def _set_schema_version(self, conn: aiosqlite.Connection, version: int):
         """Set schema version."""
-        await conn.execute(
-            "INSERT INTO schema_version (version) VALUES (?)", (version,)
-        )
+        await conn.execute("INSERT INTO schema_version (version) VALUES (?)", (version,))
 
-    def _get_migrations(self) -> List[Tuple[int, str]]:
+    def _get_migrations(self) -> list[tuple[int, str]]:
         """Get migration scripts."""
         return [
             (1, INITIAL_SCHEMA),
@@ -318,9 +314,7 @@ class DatabaseManager:
 
         async with self._pool_lock:
             for _ in range(self._pool_size):
-                conn = await aiosqlite.connect(
-                    self.database_path, detect_types=sqlite3.PARSE_DECLTYPES
-                )
+                conn = await aiosqlite.connect(self.database_path, detect_types=sqlite3.PARSE_DECLTYPES)
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA foreign_keys = ON")
                 self._connection_pool.append(conn)
@@ -332,9 +326,7 @@ class DatabaseManager:
             if self._connection_pool:
                 conn = self._connection_pool.pop()
             else:
-                conn = await aiosqlite.connect(
-                    self.database_path, detect_types=sqlite3.PARSE_DECLTYPES
-                )
+                conn = await aiosqlite.connect(self.database_path, detect_types=sqlite3.PARSE_DECLTYPES)
                 conn.row_factory = aiosqlite.Row
                 await conn.execute("PRAGMA foreign_keys = ON")
 

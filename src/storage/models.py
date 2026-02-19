@@ -6,7 +6,7 @@ Using dataclasses for simplicity and type safety.
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 import aiosqlite
 
@@ -31,15 +31,15 @@ class UserModel:
     """User data model."""
 
     user_id: int
-    telegram_username: Optional[str] = None
-    first_seen: Optional[datetime] = None
-    last_active: Optional[datetime] = None
+    telegram_username: str | None = None
+    first_seen: datetime | None = None
+    last_active: datetime | None = None
     is_allowed: bool = False
     total_cost: float = 0.0
     message_count: int = 0
     session_count: int = 0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format
@@ -74,7 +74,7 @@ class SessionModel:
     message_count: int = 0
     is_active: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format
@@ -112,11 +112,11 @@ class ProjectThreadModel:
     message_thread_id: int
     topic_name: str
     is_active: bool = True
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
-    id: Optional[int] = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+    id: int | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         for key in ["created_at", "updated_at"]:
@@ -146,13 +146,13 @@ class MessageModel:
     user_id: int
     timestamp: datetime
     prompt: str
-    message_id: Optional[int] = None
-    response: Optional[str] = None
+    message_id: int | None = None
+    response: str | None = None
     cost: float = 0.0
-    duration_ms: Optional[int] = None
-    error: Optional[str] = None
+    duration_ms: int | None = None
+    error: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format
@@ -178,13 +178,13 @@ class ToolUsageModel:
     session_id: str
     tool_name: str
     timestamp: datetime
-    id: Optional[int] = None
-    message_id: Optional[int] = None
-    tool_input: Optional[Dict[str, Any]] = None
+    id: int | None = None
+    message_id: int | None = None
+    tool_input: dict[str, Any] | None = None
     success: bool = True
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format
@@ -220,12 +220,12 @@ class AuditLogModel:
     user_id: int
     event_type: str
     timestamp: datetime
-    id: Optional[int] = None
-    event_data: Optional[Dict[str, Any]] = None
+    id: int | None = None
+    event_data: dict[str, Any] | None = None
     success: bool = True
-    ip_address: Optional[str] = None
+    ip_address: str | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format
@@ -262,14 +262,14 @@ class CostTrackingModel:
     date: str  # ISO date format (YYYY-MM-DD)
     daily_cost: float = 0.0
     request_count: int = 0
-    id: Optional[int] = None
+    id: int | None = None
 
     @classmethod
     def from_row(cls, row: aiosqlite.Row) -> "CostTrackingModel":
         """Create from database row."""
         return cls(**dict(row))
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         return asdict(self)
 
@@ -281,12 +281,12 @@ class UserTokenModel:
     user_id: int
     token_hash: str
     created_at: datetime
-    token_id: Optional[int] = None
-    expires_at: Optional[datetime] = None
-    last_used: Optional[datetime] = None
+    token_id: int | None = None
+    expires_at: datetime | None = None
+    last_used: datetime | None = None
     is_active: bool = True
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
         data = asdict(self)
         # Convert datetime to ISO format

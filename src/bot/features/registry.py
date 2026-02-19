@@ -2,7 +2,7 @@
 Central feature registry and management
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 
@@ -27,7 +27,7 @@ class FeatureRegistry:
         self.config = config
         self.storage = storage
         self.security = security
-        self.features: Dict[str, Any] = {}
+        self.features: dict[str, Any] = {}
 
         # Initialize features based on config
         self._initialize_features()
@@ -39,9 +39,7 @@ class FeatureRegistry:
         # File upload handling - conditionally enabled
         if self.config.enable_file_uploads:
             try:
-                self.features["file_handler"] = FileHandler(
-                    config=self.config, security=self.security
-                )
+                self.features["file_handler"] = FileHandler(config=self.config, security=self.security)
                 logger.info("File handler feature enabled")
             except Exception as e:
                 logger.error("Failed to initialize file handler", error=str(e))
@@ -90,7 +88,7 @@ class FeatureRegistry:
             enabled_features=list(self.features.keys()),
         )
 
-    def get_feature(self, name: str) -> Optional[Any]:
+    def get_feature(self, name: str) -> Any | None:
         """Get feature by name"""
         return self.features.get(name)
 
@@ -98,31 +96,31 @@ class FeatureRegistry:
         """Check if feature is enabled"""
         return feature_name in self.features
 
-    def get_file_handler(self) -> Optional[FileHandler]:
+    def get_file_handler(self) -> FileHandler | None:
         """Get file handler feature"""
         return self.get_feature("file_handler")
 
-    def get_git_integration(self) -> Optional[GitIntegration]:
+    def get_git_integration(self) -> GitIntegration | None:
         """Get git integration feature"""
         return self.get_feature("git")
 
-    def get_quick_actions(self) -> Optional[QuickActionManager]:
+    def get_quick_actions(self) -> QuickActionManager | None:
         """Get quick actions feature"""
         return self.get_feature("quick_actions")
 
-    def get_session_export(self) -> Optional[SessionExporter]:
+    def get_session_export(self) -> SessionExporter | None:
         """Get session export feature"""
         return self.get_feature("session_export")
 
-    def get_image_handler(self) -> Optional[ImageHandler]:
+    def get_image_handler(self) -> ImageHandler | None:
         """Get image handler feature"""
         return self.get_feature("image_handler")
 
-    def get_conversation_enhancer(self) -> Optional[ConversationEnhancer]:
+    def get_conversation_enhancer(self) -> ConversationEnhancer | None:
         """Get conversation enhancer feature"""
         return self.get_feature("conversation")
 
-    def get_enabled_features(self) -> Dict[str, Any]:
+    def get_enabled_features(self) -> dict[str, Any]:
         """Get all enabled features"""
         return self.features.copy()
 

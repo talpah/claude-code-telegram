@@ -18,10 +18,7 @@ def thread_settings(tmp_path: Path):
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n"
-        "  - slug: project_a\n"
-        "    name: Project A\n"
-        "    path: project_a\n",
+        "projects:\n  - slug: project_a\n    name: Project A\n    path: project_a\n",
         encoding="utf-8",
     )
 
@@ -48,9 +45,7 @@ async def test_command_cd_stays_within_project_root(thread_settings):
         "settings": settings,
         "security_validator": None,
         "audit_logger": None,
-        "claude_integration": AsyncMock(
-            _find_resumable_session=AsyncMock(return_value=None)
-        ),
+        "claude_integration": AsyncMock(_find_resumable_session=AsyncMock(return_value=None)),
     }
     context.user_data = {
         "current_directory": project_root,
@@ -75,9 +70,7 @@ async def test_callback_cd_stays_within_project_root(thread_settings):
         "settings": settings,
         "security_validator": None,
         "audit_logger": None,
-        "claude_integration": AsyncMock(
-            _find_resumable_session=AsyncMock(return_value=None)
-        ),
+        "claude_integration": AsyncMock(_find_resumable_session=AsyncMock(return_value=None)),
     }
     context.user_data = {
         "current_directory": project_root,
@@ -221,10 +214,7 @@ async def test_sync_threads_group_mode_rejects_non_target_chat(tmp_path: Path):
 
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n"
-        "  - slug: project_a\n"
-        "    name: Project A\n"
-        "    path: project_a\n",
+        "projects:\n  - slug: project_a\n    name: Project A\n    path: project_a\n",
         encoding="utf-8",
     )
 

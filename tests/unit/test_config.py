@@ -227,10 +227,7 @@ def test_mcp_config_validation(tmp_path, monkeypatch):
 
     # Should succeed with valid MCP config
     config_file = tmp_path / "mcp_config.json"
-    config_file.write_text(
-        '{"mcpServers": {"my-server": '
-        '{"command": "npx", "args": ["-y", "my-mcp-server"]}}}'
-    )
+    config_file.write_text('{"mcpServers": {"my-server": {"command": "npx", "args": ["-y", "my-mcp-server"]}}}')
 
     settings = Settings(
         telegram_bot_token="test_token",
@@ -277,7 +274,7 @@ def test_project_threads_validation_requires_chat_id_in_group_mode(tmp_path):
     app_dir.mkdir()
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app\n" "    name: App\n" "    path: app\n",
+        "projects:\n  - slug: app\n    name: App\n    path: app\n",
         encoding="utf-8",
     )
 
@@ -338,7 +335,7 @@ def test_project_threads_validation_private_mode_no_chat_id(tmp_path):
     app_dir.mkdir()
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app\n" "    name: App\n" "    path: app\n",
+        "projects:\n  - slug: app\n    name: App\n    path: app\n",
         encoding="utf-8",
     )
 
@@ -363,7 +360,7 @@ def test_project_threads_validation_private_mode_empty_chat_id(tmp_path):
     app_dir.mkdir()
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app\n" "    name: App\n" "    path: app\n",
+        "projects:\n  - slug: app\n    name: App\n    path: app\n",
         encoding="utf-8",
     )
 
@@ -389,7 +386,7 @@ def test_project_threads_validation_group_mode_empty_chat_id_fails(tmp_path):
     app_dir.mkdir()
     config_file = tmp_path / "projects.yaml"
     config_file.write_text(
-        "projects:\n" "  - slug: app\n" "    name: App\n" "    path: app\n",
+        "projects:\n  - slug: app\n    name: App\n    path: app\n",
         encoding="utf-8",
     )
 
@@ -460,9 +457,7 @@ def test_computed_properties(tmp_path):
 def test_feature_flags():
     """Test feature flag system."""
     # Create test MCP config file with valid structure before creating settings
-    mcp_config = (
-        '{"mcpServers": {"test-server": {"command": "echo", "args": ["hello"]}}}'
-    )
+    mcp_config = '{"mcpServers": {"test-server": {"command": "echo", "args": ["hello"]}}}'
     Path("/tmp/test_mcp.json").write_text(mcp_config)
 
     settings = create_test_config(

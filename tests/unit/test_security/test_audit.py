@@ -162,12 +162,8 @@ class TestInMemoryAuditStorage:
         old_time = now - timedelta(hours=2)
 
         # Store events at different times
-        old_event = AuditEvent(
-            timestamp=old_time, user_id=123, event_type="old", success=True, details={}
-        )
-        new_event = AuditEvent(
-            timestamp=now, user_id=123, event_type="new", success=True, details={}
-        )
+        old_event = AuditEvent(timestamp=old_time, user_id=123, event_type="old", success=True, details={})
+        new_event = AuditEvent(timestamp=now, user_id=123, event_type="new", success=True, details={})
 
         await storage.store_event(old_event)
         await storage.store_event(new_event)
@@ -260,9 +256,7 @@ class TestAuditLogger:
 
     async def test_log_auth_attempt_success(self, audit_logger, storage):
         """Test logging successful authentication attempt."""
-        await audit_logger.log_auth_attempt(
-            user_id=123, success=True, method="whitelist", reason="user_in_whitelist"
-        )
+        await audit_logger.log_auth_attempt(user_id=123, success=True, method="whitelist", reason="user_in_whitelist")
 
         events = await storage.get_events()
         assert len(events) == 1
@@ -276,9 +270,7 @@ class TestAuditLogger:
 
     async def test_log_auth_attempt_failure(self, audit_logger, storage):
         """Test logging failed authentication attempt."""
-        await audit_logger.log_auth_attempt(
-            user_id=456, success=False, method="token", reason="invalid_token"
-        )
+        await audit_logger.log_auth_attempt(user_id=456, success=False, method="token", reason="invalid_token")
 
         events = await storage.get_events()
         event = events[0]
@@ -327,18 +319,14 @@ class TestAuditLogger:
     async def test_log_command_risk_assessment(self, audit_logger, storage):
         """Test command risk assessment."""
         # Test high-risk command
-        await audit_logger.log_command(
-            user_id=123, command="rm", args=["-rf", "/tmp/test"], success=True
-        )
+        await audit_logger.log_command(user_id=123, command="rm", args=["-rf", "/tmp/test"], success=True)
 
         events = await storage.get_events()
         high_risk_event = events[0]
         assert high_risk_event.risk_level == "high"
 
         # Test low-risk command
-        await audit_logger.log_command(
-            user_id=123, command="echo", args=["hello"], success=True
-        )
+        await audit_logger.log_command(user_id=123, command="echo", args=["hello"], success=True)
 
         events = await storage.get_events()
         low_risk_event = events[0]  # Most recent
@@ -365,18 +353,14 @@ class TestAuditLogger:
     async def test_log_file_access_risk_assessment(self, audit_logger, storage):
         """Test file access risk assessment."""
         # High-risk: delete sensitive file
-        await audit_logger.log_file_access(
-            user_id=123, file_path="/etc/passwd", action="delete", success=True
-        )
+        await audit_logger.log_file_access(user_id=123, file_path="/etc/passwd", action="delete", success=True)
 
         events = await storage.get_events()
         high_risk_event = events[0]
         assert high_risk_event.risk_level == "high"
 
         # Low-risk: read normal file
-        await audit_logger.log_file_access(
-            user_id=123, file_path="/projects/readme.txt", action="read", success=True
-        )
+        await audit_logger.log_file_access(user_id=123, file_path="/projects/readme.txt", action="read", success=True)
 
         events = await storage.get_events()
         low_risk_event = events[0]  # Most recent
@@ -431,9 +415,7 @@ class TestAuditLogger:
         assert summary["user_id"] == user_id
         assert summary["total_events"] == 4
         assert summary["security_violations"] == 1
-        assert (
-            summary["success_rate"] == 0.5
-        )  # 2 successful out of 4 (violation is unsuccessful)
+        assert summary["success_rate"] == 0.5  # 2 successful out of 4 (violation is unsuccessful)
         assert "auth_attempt" in summary["event_types"]
         assert "command" in summary["event_types"]
         assert summary["event_types"]["command"] == 2

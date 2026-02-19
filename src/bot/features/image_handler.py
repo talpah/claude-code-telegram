@@ -10,7 +10,6 @@ Features:
 
 import base64
 from dataclasses import dataclass
-from typing import Dict, Optional
 
 from telegram import PhotoSize
 
@@ -25,7 +24,7 @@ class ProcessedImage:
     image_type: str
     base64_data: str
     size: int
-    metadata: Dict[str, any] = None
+    metadata: dict[str, any] = None
 
 
 class ImageHandler:
@@ -35,9 +34,7 @@ class ImageHandler:
         self.config = config
         self.supported_formats = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
-    async def process_image(
-        self, photo: PhotoSize, caption: Optional[str] = None
-    ) -> ProcessedImage:
+    async def process_image(self, photo: PhotoSize, caption: str | None = None) -> ProcessedImage:
         """Process uploaded image"""
 
         # Download image
@@ -93,7 +90,7 @@ class ImageHandler:
         else:
             return "unknown"
 
-    def _create_screenshot_prompt(self, caption: Optional[str]) -> str:
+    def _create_screenshot_prompt(self, caption: str | None) -> str:
         """Create prompt for screenshot analysis"""
         base_prompt = """I'm sharing a screenshot with you. Please analyze it and help me with:
 
@@ -108,7 +105,7 @@ class ImageHandler:
 
         return base_prompt
 
-    def _create_diagram_prompt(self, caption: Optional[str]) -> str:
+    def _create_diagram_prompt(self, caption: str | None) -> str:
         """Create prompt for diagram analysis"""
         base_prompt = """I'm sharing a diagram with you. Please help me:
 
@@ -123,7 +120,7 @@ class ImageHandler:
 
         return base_prompt
 
-    def _create_ui_prompt(self, caption: Optional[str]) -> str:
+    def _create_ui_prompt(self, caption: str | None) -> str:
         """Create prompt for UI mockup analysis"""
         base_prompt = """I'm sharing a UI mockup with you. Please analyze:
 
@@ -139,7 +136,7 @@ class ImageHandler:
 
         return base_prompt
 
-    def _create_generic_prompt(self, caption: Optional[str]) -> str:
+    def _create_generic_prompt(self, caption: str | None) -> str:
         """Create generic image analysis prompt"""
         base_prompt = """I'm sharing an image with you. Please analyze it and provide relevant insights.
 
@@ -162,7 +159,7 @@ class ImageHandler:
         extension = f".{parts[-1]}"
         return extension in self.supported_formats
 
-    async def validate_image(self, image_bytes: bytes) -> tuple[bool, Optional[str]]:
+    async def validate_image(self, image_bytes: bytes) -> tuple[bool, str | None]:
         """Validate image data"""
         # Check size
         max_size = 10 * 1024 * 1024  # 10MB

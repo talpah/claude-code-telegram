@@ -16,9 +16,7 @@ def make_settings(**overrides):  # type: ignore[no-untyped-def]
     settings = MagicMock()
     settings.development_mode = True
     settings.github_webhook_secret = overrides.get("github_webhook_secret", "gh-secret")
-    settings.webhook_api_secret = overrides.get(
-        "webhook_api_secret", "default-api-secret"
-    )
+    settings.webhook_api_secret = overrides.get("webhook_api_secret", "default-api-secret")
     settings.api_server_port = 8080
     settings.debug = False
     return settings

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -25,7 +25,7 @@ def _make_mock_response(session_id: str = "new-session-id") -> MagicMock:
     return resp
 
 
-def _make_user_data(force_new: bool = False) -> Dict[str, Any]:
+def _make_user_data(force_new: bool = False) -> dict[str, Any]:
     """Simulate context.user_data dict as the handlers would see it."""
     return {
         "claude_session_id": None,
@@ -114,9 +114,7 @@ class TestForceNewSkipsAutoResume:
         session_manager.active_sessions[existing.session_id] = existing
 
         # Mock _find_resumable_session to track whether it's called
-        with patch.object(
-            facade, "_find_resumable_session", wraps=facade._find_resumable_session
-        ) as spy:
+        with patch.object(facade, "_find_resumable_session", wraps=facade._find_resumable_session) as spy:
             with patch.object(
                 facade,
                 "_execute_with_fallback",
@@ -215,9 +213,7 @@ class TestForceNewSurvivesFailure:
 
         assert user_data["force_new_session"] is False
 
-    async def test_retry_after_failure_still_skips_auto_resume(
-        self, facade, session_manager
-    ):
+    async def test_retry_after_failure_still_skips_auto_resume(self, facade, session_manager):
         """Full scenario: /new -> fail -> retry -> success.
         Both calls should skip auto-resume; flag cleared only after success."""
         project = Path("/test/project")
@@ -228,9 +224,7 @@ class TestForceNewSurvivesFailure:
 
         # --- First attempt: fails ---
         force_new = bool(user_data.get("force_new_session"))
-        with patch.object(
-            facade, "_find_resumable_session", wraps=facade._find_resumable_session
-        ) as spy1:
+        with patch.object(facade, "_find_resumable_session", wraps=facade._find_resumable_session) as spy1:
             with patch.object(
                 facade,
                 "_execute_with_fallback",
@@ -251,9 +245,7 @@ class TestForceNewSurvivesFailure:
 
         # --- Second attempt: succeeds ---
         force_new = bool(user_data.get("force_new_session"))
-        with patch.object(
-            facade, "_find_resumable_session", wraps=facade._find_resumable_session
-        ) as spy2:
+        with patch.object(facade, "_find_resumable_session", wraps=facade._find_resumable_session) as spy2:
             with patch.object(
                 facade,
                 "_execute_with_fallback",

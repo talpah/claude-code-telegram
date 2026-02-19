@@ -48,9 +48,7 @@ class TestStorageFacade:
         await storage.get_or_create_user(12346, "sessionuser")
 
         # Create session
-        session = await storage.create_session(
-            12346, "/test/project", "test-session-123"
-        )
+        session = await storage.create_session(12346, "/test/project", "test-session-123")
         assert session.session_id == "test-session-123"
         assert session.user_id == 12346
         assert session.project_path == "/test/project"
@@ -149,9 +147,7 @@ class TestStorageFacade:
         summary = await storage.get_user_session_summary(12350)
         assert summary["total_sessions"] == 3
         assert summary["active_sessions"] == 3
-        assert (
-            abs(summary["total_cost"] - 0.3) < 0.0001
-        )  # Handle floating point precision
+        assert abs(summary["total_cost"] - 0.3) < 0.0001  # Handle floating point precision
         assert summary["total_messages"] == 3
         assert len(summary["projects"]) == 3
 
@@ -216,8 +212,7 @@ class TestStorageFacade:
         # Manually set old timestamp in database
         async with storage.db_manager.get_connection() as conn:
             await conn.execute(
-                "UPDATE sessions SET last_used = datetime('now', '-35 days') "
-                "WHERE session_id = ?",
+                "UPDATE sessions SET last_used = datetime('now', '-35 days') WHERE session_id = ?",
                 ("cleanup-session",),
             )
             await conn.commit()

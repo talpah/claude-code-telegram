@@ -28,9 +28,7 @@ class TestSecurityValidator:
         """Test validator initialization."""
         assert validator.approved_directory == temp_approved_dir.resolve()
 
-    def test_validator_initialization_with_pattern_checks_disabled(
-        self, temp_approved_dir
-    ):
+    def test_validator_initialization_with_pattern_checks_disabled(self, temp_approved_dir):
         """Validator should allow disabling dangerous pattern checks."""
         validator = SecurityValidator(temp_approved_dir, disable_security_patterns=True)
         assert validator.disable_security_patterns is True
@@ -76,10 +74,7 @@ class TestSecurityValidator:
             assert path is None
             assert error is not None
             # Error could be either pattern detection or outside directory
-            assert (
-                "forbidden pattern" in error.lower()
-                or "outside approved directory" in error.lower()
-            )
+            assert "forbidden pattern" in error.lower() or "outside approved directory" in error.lower()
 
     def test_path_outside_approved_directory(self, validator, temp_approved_dir):
         """Test rejection of paths outside approved directory."""

@@ -41,10 +41,7 @@ class FeatureFlags:
     @property
     def token_auth_enabled(self) -> bool:
         """Check if token-based authentication is enabled."""
-        return (
-            self.settings.enable_token_auth
-            and self.settings.auth_token_secret is not None
-        )
+        return self.settings.enable_token_auth and self.settings.auth_token_secret is not None
 
     @property
     def webhook_enabled(self) -> bool:

@@ -2,7 +2,6 @@
 
 import re
 from dataclasses import dataclass
-from typing import List, Optional
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -16,7 +15,7 @@ class FormattedMessage:
 
     text: str
     parse_mode: str = "HTML"
-    reply_markup: Optional[InlineKeyboardMarkup] = None
+    reply_markup: InlineKeyboardMarkup | None = None
 
     def __len__(self) -> int:
         """Return length of message text."""
@@ -32,9 +31,7 @@ class ResponseFormatter:
         self.max_message_length = 4000  # Telegram limit is 4096, leave some buffer
         self.max_code_block_length = 3000  # Max length for code blocks
 
-    def format_claude_response(
-        self, text: str, context: Optional[dict] = None
-    ) -> List[FormattedMessage]:
+    def format_claude_response(self, text: str, context: dict | None = None) -> list[FormattedMessage]:
         """Enhanced formatting with context awareness and semantic chunking."""
         # Clean and prepare text
         text = self._clean_text(text)
@@ -56,11 +53,7 @@ class ResponseFormatter:
         if messages and self.settings.enable_quick_actions:
             messages[-1].reply_markup = self._get_contextual_keyboard(context)
 
-        return (
-            messages
-            if messages
-            else [FormattedMessage("<i>(No content to display)</i>")]
-        )
+        return messages if messages else [FormattedMessage("<i>(No content to display)</i>")]
 
     def _should_use_semantic_chunking(self, text: str) -> bool:
         """Determine if semantic chunking is needed."""
@@ -84,9 +77,7 @@ class ResponseFormatter:
 
         return code_block_count > 2 or has_file_operations or is_very_long
 
-    def format_error_message(
-        self, error: str, error_type: str = "Error"
-    ) -> FormattedMessage:
+    def format_error_message(self, error: str, error_type: str = "Error") -> FormattedMessage:
         """Format error message with appropriate styling."""
         icon = {
             "Error": "❌",
@@ -100,39 +91,26 @@ class ResponseFormatter:
 
         return FormattedMessage(text, parse_mode="HTML")
 
-    def format_success_message(
-        self, message: str, title: str = "Success"
-    ) -> FormattedMessage:
+    def format_success_message(self, message: str, title: str = "Success") -> FormattedMessage:
         """Format success message with appropriate styling."""
         text = f"✅ <b>{escape_html(title)}</b>\n\n{escape_html(message)}"
         return FormattedMessage(text, parse_mode="HTML")
 
-    def format_info_message(
-        self, message: str, title: str = "Info"
-    ) -> FormattedMessage:
+    def format_info_message(self, message: str, title: str = "Info") -> FormattedMessage:
         """Format info message with appropriate styling."""
         text = f"ℹ️ <b>{escape_html(title)}</b>\n\n{escape_html(message)}"
         return FormattedMessage(text, parse_mode="HTML")
 
-    def format_code_output(
-        self, output: str, language: str = "", title: str = "Output"
-    ) -> List[FormattedMessage]:
+    def format_code_output(self, output: str, language: str = "", title: str = "Output") -> list[FormattedMessage]:
         """Format code output with syntax highlighting."""
         if not output.strip():
-            return [
-                FormattedMessage(
-                    f"📄 <b>{escape_html(title)}</b>\n\n<i>(empty output)</i>"
-                )
-            ]
+            return [FormattedMessage(f"📄 <b>{escape_html(title)}</b>\n\n<i>(empty output)</i>")]
 
         escaped_output = escape_html(output)
 
         # Check if the code block is too long
         if len(escaped_output) > self.max_code_block_length:
-            escaped_output = (
-                escape_html(output[: self.max_code_block_length - 100])
-                + "\n... (output truncated)"
-            )
+            escaped_output = escape_html(output[: self.max_code_block_length - 100]) + "\n... (output truncated)"
 
         if language:
             code_block = f'<pre><code class="language-{escape_html(language)}">{escaped_output}</code></pre>'
@@ -143,9 +121,7 @@ class ResponseFormatter:
 
         return self._split_message(text)
 
-    def format_file_list(
-        self, files: List[str], directory: str = ""
-    ) -> FormattedMessage:
+    def format_file_list(self, files: list[str], directory: str = "") -> FormattedMessage:
         """Format file listing with appropriate icons."""
         safe_dir = escape_html(directory)
         if not files:
@@ -167,9 +143,7 @@ class ResponseFormatter:
 
         return FormattedMessage(text, parse_mode="HTML")
 
-    def format_progress_message(
-        self, message: str, percentage: Optional[float] = None
-    ) -> FormattedMessage:
+    def format_progress_message(self, message: str, percentage: float | None = None) -> FormattedMessage:
         """Format progress message with optional progress bar."""
         safe_msg = escape_html(message)
         if percentage is not None:
@@ -183,7 +157,7 @@ class ResponseFormatter:
 
         return FormattedMessage(text, parse_mode="HTML")
 
-    def _semantic_chunk(self, text: str, context: Optional[dict]) -> List[dict]:
+    def _semantic_chunk(self, text: str, context: dict | None) -> list[dict]:
         """Split text into semantic chunks based on content type."""
         chunks = []
 
@@ -205,7 +179,7 @@ class ResponseFormatter:
 
         return chunks
 
-    def _identify_sections(self, text: str) -> List[dict]:
+    def _identify_sections(self, text: str) -> list[dict]:
         """Identify different content types in the text."""
         sections = []
         lines = text.split("\n")
@@ -283,7 +257,7 @@ class ResponseFormatter:
         ]
         return any(indicator in line for indicator in file_indicators)
 
-    def _chunk_code_block(self, section: dict) -> List[dict]:
+    def _chunk_code_block(self, section: dict) -> list[dict]:
         """Handle code block chunking."""
         content = section["content"]
         if len(content) <= self.max_code_block_length:
@@ -297,21 +271,17 @@ class ResponseFormatter:
         for line in lines[1:-1]:  # Skip first and last ``` lines
             if len(current_chunk + line + "\n```\n") > self.max_code_block_length:
                 current_chunk += "```"
-                chunks.append(
-                    {"type": "code_block", "content": current_chunk, "format": "split"}
-                )
+                chunks.append({"type": "code_block", "content": current_chunk, "format": "split"})
                 current_chunk = "```\n" + line + "\n"
             else:
                 current_chunk += line + "\n"
 
         current_chunk += lines[-1]  # Add the closing ```
-        chunks.append(
-            {"type": "code_block", "content": current_chunk, "format": "split"}
-        )
+        chunks.append({"type": "code_block", "content": current_chunk, "format": "split"})
 
         return chunks
 
-    def _chunk_explanation(self, section: dict) -> List[dict]:
+    def _chunk_explanation(self, section: dict) -> list[dict]:
         """Handle explanation text chunking."""
         content = section["content"]
         if len(content) <= self.max_message_length:
@@ -325,9 +295,7 @@ class ResponseFormatter:
         for paragraph in paragraphs:
             if len(current_chunk + paragraph + "\n\n") > self.max_message_length:
                 if current_chunk:
-                    chunks.append(
-                        {"type": "explanation", "content": current_chunk.strip()}
-                    )
+                    chunks.append({"type": "explanation", "content": current_chunk.strip()})
                 current_chunk = paragraph + "\n\n"
             else:
                 current_chunk += paragraph + "\n\n"
@@ -337,12 +305,12 @@ class ResponseFormatter:
 
         return chunks
 
-    def _chunk_mixed_content(self, section: dict) -> List[dict]:
+    def _chunk_mixed_content(self, section: dict) -> list[dict]:
         """Handle mixed content sections."""
         # For now, treat as regular text
         return self._chunk_text(section)
 
-    def _chunk_text(self, section: dict) -> List[dict]:
+    def _chunk_text(self, section: dict) -> list[dict]:
         """Handle regular text chunking."""
         content = section["content"]
         if len(content) <= self.max_message_length:
@@ -371,7 +339,7 @@ class ResponseFormatter:
         """Format file operations section."""
         return {"type": "file_operations", "content": section["content"]}
 
-    def _format_chunk(self, chunk: dict) -> List[FormattedMessage]:
+    def _format_chunk(self, chunk: dict) -> list[FormattedMessage]:
         """Format individual chunks into FormattedMessage objects."""
         chunk_type = chunk["type"]
         content = chunk["content"]
@@ -379,11 +347,7 @@ class ResponseFormatter:
         if chunk_type == "code_block":
             # Format code blocks with proper styling
             if chunk.get("format") == "split":
-                title = (
-                    "📄 <b>Code (continued)</b>"
-                    if "continued" in content
-                    else "📄 <b>Code</b>"
-                )
+                title = "📄 <b>Code (continued)</b>" if "continued" in content else "📄 <b>Code</b>"
             else:
                 title = "📄 <b>Code</b>"
 
@@ -401,9 +365,7 @@ class ResponseFormatter:
         # Split if still too long
         return self._split_message(text)
 
-    def _get_contextual_keyboard(
-        self, context: Optional[dict]
-    ) -> Optional[InlineKeyboardMarkup]:
+    def _get_contextual_keyboard(self, context: dict | None) -> InlineKeyboardMarkup | None:
         """Get context-aware quick action keyboard."""
         if not context:
             return self._get_quick_actions_keyboard()
@@ -412,14 +374,10 @@ class ResponseFormatter:
 
         # Add context-specific buttons
         if context.get("has_code"):
-            buttons.append(
-                [InlineKeyboardButton("💾 Save Code", callback_data="save_code")]
-            )
+            buttons.append([InlineKeyboardButton("💾 Save Code", callback_data="save_code")])
 
         if context.get("has_file_operations"):
-            buttons.append(
-                [InlineKeyboardButton("📁 Show Files", callback_data="show_files")]
-            )
+            buttons.append([InlineKeyboardButton("📁 Show Files", callback_data="show_files")])
 
         if context.get("has_errors"):
             buttons.append([InlineKeyboardButton("🔧 Debug", callback_data="debug")])
@@ -456,9 +414,7 @@ class ResponseFormatter:
                 # Re-extract and truncate the inner content
                 inner = m.group(1)
                 truncated = inner[: self.max_code_block_length - 80]
-                return (
-                    f"<pre><code>{escape_html(truncated)}\n... (truncated)</code></pre>"
-                )
+                return f"<pre><code>{escape_html(truncated)}\n... (truncated)</code></pre>"
             return full
 
         return re.sub(
@@ -468,13 +424,13 @@ class ResponseFormatter:
             flags=re.DOTALL,
         )
 
-    def _split_message(self, text: str) -> List[FormattedMessage]:
+    def _split_message(self, text: str) -> list[FormattedMessage]:
         """Split long messages while preserving formatting."""
         if len(text) <= self.max_message_length:
             return [FormattedMessage(text)]
 
         messages = []
-        current_lines: List[str] = []
+        current_lines: list[str] = []
         current_length = 0
         in_code_block = False
 
@@ -498,10 +454,7 @@ class ResponseFormatter:
                 for chunk in chunks:
                     chunk_length = len(chunk) + 1
 
-                    if (
-                        current_length + chunk_length > self.max_message_length
-                        and current_lines
-                    ):
+                    if current_length + chunk_length > self.max_message_length and current_lines:
                         if in_code_block:
                             current_lines.append("</code></pre>")
                         messages.append(FormattedMessage("\n".join(current_lines)))
@@ -556,9 +509,7 @@ class ResponseFormatter:
 
         return InlineKeyboardMarkup(keyboard)
 
-    def create_confirmation_keyboard(
-        self, confirm_data: str, cancel_data: str = "confirm:no"
-    ) -> InlineKeyboardMarkup:
+    def create_confirmation_keyboard(self, confirm_data: str, cancel_data: str = "confirm:no") -> InlineKeyboardMarkup:
         """Create a confirmation keyboard."""
         keyboard = [
             [
@@ -568,7 +519,7 @@ class ResponseFormatter:
         ]
         return InlineKeyboardMarkup(keyboard)
 
-    def create_navigation_keyboard(self, options: List[tuple]) -> InlineKeyboardMarkup:
+    def create_navigation_keyboard(self, options: list[tuple]) -> InlineKeyboardMarkup:
         """Create navigation keyboard from options list.
 
         Args:

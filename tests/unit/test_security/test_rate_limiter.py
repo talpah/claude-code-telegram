@@ -13,9 +13,7 @@ class TestRateLimitBucket:
 
     def test_bucket_creation(self):
         """Test bucket creation with initial tokens."""
-        bucket = RateLimitBucket(
-            capacity=10, tokens=10, last_update=datetime.now(UTC), refill_rate=1.0
-        )
+        bucket = RateLimitBucket(capacity=10, tokens=10, last_update=datetime.now(UTC), refill_rate=1.0)
 
         assert bucket.capacity == 10
         assert bucket.tokens == 10
@@ -23,9 +21,7 @@ class TestRateLimitBucket:
 
     def test_token_consumption(self):
         """Test consuming tokens from bucket."""
-        bucket = RateLimitBucket(
-            capacity=10, tokens=5, last_update=datetime.now(UTC), refill_rate=1.0
-        )
+        bucket = RateLimitBucket(capacity=10, tokens=5, last_update=datetime.now(UTC), refill_rate=1.0)
 
         # Should be able to consume available tokens
         assert bucket.consume(3) is True
@@ -54,9 +50,7 @@ class TestRateLimitBucket:
 
     def test_wait_time_calculation(self):
         """Test wait time calculation when tokens not available."""
-        bucket = RateLimitBucket(
-            capacity=10, tokens=2, last_update=datetime.now(UTC), refill_rate=1.0
-        )
+        bucket = RateLimitBucket(capacity=10, tokens=2, last_update=datetime.now(UTC), refill_rate=1.0)
 
         # Should be able to consume available tokens immediately
         wait_time = bucket.get_wait_time(2)
@@ -68,9 +62,7 @@ class TestRateLimitBucket:
 
     def test_bucket_status(self):
         """Test bucket status reporting."""
-        bucket = RateLimitBucket(
-            capacity=10, tokens=7, last_update=datetime.now(UTC), refill_rate=2.0
-        )
+        bucket = RateLimitBucket(capacity=10, tokens=7, last_update=datetime.now(UTC), refill_rate=2.0)
 
         status = bucket.get_status()
 
@@ -99,10 +91,7 @@ class TestRateLimiter:
     def test_rate_limiter_initialization(self, rate_limiter, config):
         """Test rate limiter initialization."""
         assert rate_limiter.config == config
-        assert (
-            rate_limiter.refill_rate
-            == config.rate_limit_requests / config.rate_limit_window
-        )
+        assert rate_limiter.refill_rate == config.rate_limit_requests / config.rate_limit_window
         assert len(rate_limiter.request_buckets) == 0
         assert len(rate_limiter.cost_tracker) == 0
 
@@ -111,9 +100,7 @@ class TestRateLimiter:
         user_id = 123
 
         # First request should pass
-        allowed, message = await rate_limiter.check_rate_limit(
-            user_id, cost=0.5, tokens=1
-        )
+        allowed, message = await rate_limiter.check_rate_limit(user_id, cost=0.5, tokens=1)
         assert allowed is True
         assert message is None
 
@@ -177,10 +164,7 @@ class TestRateLimiter:
 
         # Verify reset
         assert rate_limiter.cost_tracker[user_id] == 0
-        assert (
-            rate_limiter.request_buckets[user_id].tokens
-            == rate_limiter.request_buckets[user_id].capacity
-        )
+        assert rate_limiter.request_buckets[user_id].tokens == rate_limiter.request_buckets[user_id].capacity
 
     async def test_cost_tracker_auto_reset(self, rate_limiter):
         """Test automatic cost tracker reset after time period."""
@@ -224,10 +208,7 @@ class TestRateLimiter:
         assert status["active_users"] == 2
         assert status["total_cost_tracked"] == 3.0
         assert "config" in status
-        assert (
-            status["config"]["max_cost_per_user"]
-            == rate_limiter.config.claude_max_cost_per_user
-        )
+        assert status["config"]["max_cost_per_user"] == rate_limiter.config.claude_max_cost_per_user
 
     async def test_cleanup_inactive_users(self, rate_limiter):
         """Test cleanup of inactive users."""
@@ -295,8 +276,6 @@ class TestRateLimiter:
         bucket = rate_limiter._get_or_create_bucket(user_id)
         large_request = bucket.capacity + 10
 
-        allowed, message = await rate_limiter.check_rate_limit(
-            user_id, tokens=large_request
-        )
+        allowed, message = await rate_limiter.check_rate_limit(user_id, tokens=large_request)
         assert allowed is False
         assert "Rate limit exceeded" in message

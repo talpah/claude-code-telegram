@@ -279,9 +279,7 @@ class TestToolMonitorConfigBypass:
 
     async def test_disable_tool_validation_still_rejects_invalid_file_path(self):
         validator = _ValidatorStub(should_allow_path=False)
-        monitor = ToolMonitor(
-            _MonitorConfigStub(disable_tool_validation=True), validator
-        )
+        monitor = ToolMonitor(_MonitorConfigStub(disable_tool_validation=True), validator)
 
         allowed, error = await monitor.validate_tool_call(
             tool_name="Read",
@@ -358,24 +356,16 @@ class TestToolMonitorConfigBypass:
     async def test_session_limit_enforcement(self, session_manager):
         """Test session limit enforcement."""
         # Create maximum number of sessions
-        session1 = await session_manager.get_or_create_session(
-            user_id=123, project_path=Path("/test/project1")
-        )
-        await session_manager.get_or_create_session(
-            user_id=123, project_path=Path("/test/project2")
-        )
+        session1 = await session_manager.get_or_create_session(user_id=123, project_path=Path("/test/project1"))
+        await session_manager.get_or_create_session(user_id=123, project_path=Path("/test/project2"))
 
         # Creating third session should remove oldest
-        await session_manager.get_or_create_session(
-            user_id=123, project_path=Path("/test/project3")
-        )
+        await session_manager.get_or_create_session(user_id=123, project_path=Path("/test/project3"))
 
         # Should have only 2 sessions
         user_sessions = await session_manager._get_user_sessions(123)
         assert len(user_sessions) == 2
 
         # First session should be gone
-        loaded_session1 = await session_manager.storage.load_session(
-            session1.session_id
-        )
+        loaded_session1 = await session_manager.storage.load_session(session1.session_id)
         assert loaded_session1 is None

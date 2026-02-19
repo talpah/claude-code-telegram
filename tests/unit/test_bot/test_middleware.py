@@ -79,9 +79,7 @@ def mock_context():
 class TestMiddlewareBlocksSubsequentGroups:
     """Verify middleware rejection raises ApplicationHandlerStop."""
 
-    async def test_auth_rejection_raises_handler_stop(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_auth_rejection_raises_handler_stop(self, bot, mock_update, mock_context):
         """Auth middleware must raise ApplicationHandlerStop on rejection."""
 
         async def rejecting_auth(handler, event, data):
@@ -93,9 +91,7 @@ class TestMiddlewareBlocksSubsequentGroups:
         with pytest.raises(ApplicationHandlerStop):
             await wrapper(mock_update, mock_context)
 
-    async def test_security_rejection_raises_handler_stop(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_security_rejection_raises_handler_stop(self, bot, mock_update, mock_context):
         """Security middleware must raise ApplicationHandlerStop on dangerous input."""
 
         async def rejecting_security(handler, event, data):
@@ -107,9 +103,7 @@ class TestMiddlewareBlocksSubsequentGroups:
         with pytest.raises(ApplicationHandlerStop):
             await wrapper(mock_update, mock_context)
 
-    async def test_rate_limit_rejection_raises_handler_stop(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_rate_limit_rejection_raises_handler_stop(self, bot, mock_update, mock_context):
         """Rate limit middleware must raise ApplicationHandlerStop."""
 
         async def rejecting_rate_limit(handler, event, data):
@@ -149,14 +143,9 @@ class TestMiddlewareBlocksSubsequentGroups:
 
         mock_update.effective_message.reply_text.assert_called_once()
         call_args = mock_update.effective_message.reply_text.call_args
-        assert (
-            "not authorized" in call_args[0][0].lower()
-            or "Authentication" in call_args[0][0]
-        )
+        assert "not authorized" in call_args[0][0].lower() or "Authentication" in call_args[0][0]
 
-    async def test_real_auth_middleware_allows_authenticated_user(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_real_auth_middleware_allows_authenticated_user(self, bot, mock_update, mock_context):
         """Integration test: auth_middleware allows an authenticated user through."""
         from src.bot.middleware.auth import auth_middleware
 
@@ -169,16 +158,12 @@ class TestMiddlewareBlocksSubsequentGroups:
         wrapper = bot._create_middleware_handler(auth_middleware)
         await wrapper(mock_update, mock_context)
 
-    async def test_real_rate_limit_middleware_rejection(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_real_rate_limit_middleware_rejection(self, bot, mock_update, mock_context):
         """Integration test: rate_limit_middleware rejects when limit exceeded."""
         from src.bot.middleware.rate_limit import rate_limit_middleware
 
         rate_limiter = MagicMock()
-        rate_limiter.check_rate_limit = AsyncMock(
-            return_value=(False, "Rate limit exceeded. Try again in 30s.")
-        )
+        rate_limiter.check_rate_limit = AsyncMock(return_value=(False, "Rate limit exceeded. Try again in 30s."))
         bot.deps["rate_limiter"] = rate_limiter
 
         audit_logger = AsyncMock()
@@ -189,9 +174,7 @@ class TestMiddlewareBlocksSubsequentGroups:
         with pytest.raises(ApplicationHandlerStop):
             await wrapper(mock_update, mock_context)
 
-    async def test_dependencies_injected_before_middleware_runs(
-        self, bot, mock_update, mock_context
-    ):
+    async def test_dependencies_injected_before_middleware_runs(self, bot, mock_update, mock_context):
         """Verify dependencies are available in bot_data when middleware executes."""
         captured_data = {}
 

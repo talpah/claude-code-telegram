@@ -12,7 +12,7 @@ import secrets
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 
@@ -31,7 +31,7 @@ class UserSession:
     auth_provider: str
     created_at: datetime
     last_activity: datetime
-    user_info: Optional[Dict[str, Any]] = None
+    user_info: dict[str, Any] | None = None
     session_timeout: timedelta = timedelta(hours=24)
 
     def __post_init__(self) -> None:
@@ -51,18 +51,18 @@ class AuthProvider(ABC):
     """Base authentication provider."""
 
     @abstractmethod
-    async def authenticate(self, user_id: int, credentials: Dict[str, Any]) -> bool:
+    async def authenticate(self, user_id: int, credentials: dict[str, Any]) -> bool:
         """Verify user credentials."""
 
     @abstractmethod
-    async def get_user_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_info(self, user_id: int) -> dict[str, Any] | None:
         """Get user information."""
 
 
 class WhitelistAuthProvider(AuthProvider):
     """Whitelist-based authentication."""
 
-    def __init__(self, allowed_users: List[int], allow_all_dev: bool = False):
+    def __init__(self, allowed_users: list[int], allow_all_dev: bool = False):
         self.allowed_users = set(allowed_users)
         self.allow_all_dev = allow_all_dev
         logger.info(
@@ -71,15 +71,13 @@ class WhitelistAuthProvider(AuthProvider):
             allow_all_dev=allow_all_dev,
         )
 
-    async def authenticate(self, user_id: int, credentials: Dict[str, Any]) -> bool:
+    async def authenticate(self, user_id: int, credentials: dict[str, Any]) -> bool:
         """Authenticate user against whitelist."""
         is_allowed = self.allow_all_dev or user_id in self.allowed_users
-        logger.info(
-            "Whitelist authentication attempt", user_id=user_id, success=is_allowed
-        )
+        logger.info("Whitelist authentication attempt", user_id=user_id, success=is_allowed)
         return is_allowed
 
-    async def get_user_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_info(self, user_id: int) -> dict[str, Any] | None:
         """Get user information if whitelisted."""
         if self.allow_all_dev or user_id in self.allowed_users:
             return {
@@ -94,13 +92,11 @@ class TokenStorage(ABC):
     """Abstract token storage interface."""
 
     @abstractmethod
-    async def store_token(
-        self, user_id: int, token_hash: str, expires_at: datetime
-    ) -> None:
+    async def store_token(self, user_id: int, token_hash: str, expires_at: datetime) -> None:
         """Store token hash for user."""
 
     @abstractmethod
-    async def get_user_token(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_token(self, user_id: int) -> dict[str, Any] | None:
         """Get token data for user."""
 
     @abstractmethod
@@ -112,11 +108,9 @@ class InMemoryTokenStorage(TokenStorage):
     """In-memory token storage for development/testing."""
 
     def __init__(self) -> None:
-        self._tokens: Dict[int, Dict[str, Any]] = {}
+        self._tokens: dict[int, dict[str, Any]] = {}
 
-    async def store_token(
-        self, user_id: int, token_hash: str, expires_at: datetime
-    ) -> None:
+    async def store_token(self, user_id: int, token_hash: str, expires_at: datetime) -> None:
         """Store token hash in memory."""
         self._tokens[user_id] = {
             "hash": token_hash,
@@ -124,7 +118,7 @@ class InMemoryTokenStorage(TokenStorage):
             "created_at": datetime.now(UTC),
         }
 
-    async def get_user_token(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_token(self, user_id: int) -> dict[str, Any] | None:
         """Get token data from memory."""
         token_data = self._tokens.get(user_id)
         if token_data and token_data["expires_at"] > datetime.now(UTC):
@@ -153,20 +147,16 @@ class TokenAuthProvider(AuthProvider):
         self.token_lifetime = token_lifetime
         logger.info("Token auth provider initialized")
 
-    async def authenticate(self, user_id: int, credentials: Dict[str, Any]) -> bool:
+    async def authenticate(self, user_id: int, credentials: dict[str, Any]) -> bool:
         """Authenticate using token."""
         token = credentials.get("token")
         if not token:
-            logger.warning(
-                "Token authentication failed: no token provided", user_id=user_id
-            )
+            logger.warning("Token authentication failed: no token provided", user_id=user_id)
             return False
 
         stored_token = await self.storage.get_user_token(user_id)
         if not stored_token:
-            logger.warning(
-                "Token authentication failed: no stored token", user_id=user_id
-            )
+            logger.warning("Token authentication failed: no stored token", user_id=user_id)
             return False
 
         is_valid = self._verify_token(token, stored_token["hash"])
@@ -181,9 +171,7 @@ class TokenAuthProvider(AuthProvider):
 
         await self.storage.store_token(user_id, hashed, expires_at)
 
-        logger.info(
-            "Token generated", user_id=user_id, expires_at=expires_at.isoformat()
-        )
+        logger.info("Token generated", user_id=user_id, expires_at=expires_at.isoformat())
         return token
 
     async def revoke_token(self, user_id: int) -> None:
@@ -191,7 +179,7 @@ class TokenAuthProvider(AuthProvider):
         await self.storage.revoke_token(user_id)
         logger.info("Token revoked", user_id=user_id)
 
-    async def get_user_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+    async def get_user_info(self, user_id: int) -> dict[str, Any] | None:
         """Get user information if token is valid."""
         token_data = await self.storage.get_user_token(user_id)
         if token_data:
@@ -216,17 +204,15 @@ class TokenAuthProvider(AuthProvider):
 class AuthenticationManager:
     """Main authentication manager supporting multiple providers."""
 
-    def __init__(self, providers: List[AuthProvider]):
+    def __init__(self, providers: list[AuthProvider]):
         if not providers:
             raise SecurityError("At least one authentication provider is required")
 
         self.providers = providers
-        self.sessions: Dict[int, UserSession] = {}
+        self.sessions: dict[int, UserSession] = {}
         logger.info("Authentication manager initialized", providers=len(self.providers))
 
-    async def authenticate_user(
-        self, user_id: int, credentials: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    async def authenticate_user(self, user_id: int, credentials: dict[str, Any] | None = None) -> bool:
         """Try authentication with all providers."""
         credentials = credentials or {}
 
@@ -266,9 +252,7 @@ class AuthenticationManager:
             user_info=user_info,
         )
 
-        logger.info(
-            "Session created", user_id=user_id, provider=provider.__class__.__name__
-        )
+        logger.info("Session created", user_id=user_id, provider=provider.__class__.__name__)
 
     def is_authenticated(self, user_id: int) -> bool:
         """Check if user has active session."""
@@ -281,7 +265,7 @@ class AuthenticationManager:
             logger.info("Expired session removed", user_id=user_id)
         return False
 
-    def get_session(self, user_id: int) -> Optional[UserSession]:
+    def get_session(self, user_id: int) -> UserSession | None:
         """Get user session if valid."""
         if self.is_authenticated(user_id):
             return self.sessions[user_id]
@@ -303,11 +287,7 @@ class AuthenticationManager:
 
     def _cleanup_expired_sessions(self) -> None:
         """Remove expired sessions."""
-        expired_sessions = [
-            user_id
-            for user_id, session in self.sessions.items()
-            if session.is_expired()
-        ]
+        expired_sessions = [user_id for user_id, session in self.sessions.items() if session.is_expired()]
 
         for user_id in expired_sessions:
             del self.sessions[user_id]
@@ -320,7 +300,7 @@ class AuthenticationManager:
         self._cleanup_expired_sessions()
         return len(self.sessions)
 
-    def get_session_info(self, user_id: int) -> Optional[Dict[str, Any]]:
+    def get_session_info(self, user_id: int) -> dict[str, Any] | None:
         """Get session information for user."""
         session = self.get_session(user_id)
         if session:

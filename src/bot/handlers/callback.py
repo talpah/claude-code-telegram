@@ -1,7 +1,6 @@
 """Handle inline keyboard callbacks."""
 
 from pathlib import Path
-from typing import Optional
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -25,9 +24,7 @@ def _is_within_root(path: Path, root: Path) -> bool:
         return False
 
 
-def _get_thread_project_root(
-    settings: Settings, context: ContextTypes.DEFAULT_TYPE
-) -> Optional[Path]:
+def _get_thread_project_root(settings: Settings, context: ContextTypes.DEFAULT_TYPE) -> Path | None:
     """Get thread project root when strict thread mode is active."""
     if not settings.enable_project_threads:
         return None
@@ -37,9 +34,7 @@ def _get_thread_project_root(
     return Path(thread_context["project_root"]).resolve()
 
 
-async def handle_callback_query(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Route callback queries to appropriate handlers."""
     query = update.callback_query
     await query.answer()  # Acknowledge the callback
@@ -97,15 +92,12 @@ async def handle_callback_query(
         except Exception:
             # If we can't edit the message, send a new one
             await query.message.reply_text(
-                "❌ <b>Error Processing Action</b>\n\n"
-                "An error occurred while processing your request.",
+                "❌ <b>Error Processing Action</b>\n\nAn error occurred while processing your request.",
                 parse_mode="HTML",
             )
 
 
-async def handle_cd_callback(
-    query, project_name: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_cd_callback(query, project_name: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle directory change from inline keyboard."""
     user_id = query.from_user.id
     settings: Settings = context.bot_data["settings"]
@@ -114,9 +106,7 @@ async def handle_cd_callback(
     claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
 
     try:
-        current_dir = context.user_data.get(
-            "current_directory", settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", settings.approved_directory)
         project_root = _get_thread_project_root(settings, context)
         directory_root = project_root or settings.approved_directory
 
@@ -136,9 +126,7 @@ async def handle_cd_callback(
         # Validate path if security validator is available
         if security_validator:
             # Pass the absolute path for validation
-            valid, resolved_path, error = security_validator.validate_path(
-                str(new_path), settings.approved_directory
-            )
+            valid, resolved_path, error = security_validator.validate_path(str(new_path), settings.approved_directory)
             if not valid:
                 await query.edit_message_text(
                     f"❌ <b>Access Denied</b>\n\n{escape_html(error)}",
@@ -150,8 +138,7 @@ async def handle_cd_callback(
 
         if project_root and not _is_within_root(new_path, project_root):
             await query.edit_message_text(
-                "❌ <b>Access Denied</b>\n\n"
-                "In thread mode, navigation is limited to the current project root.",
+                "❌ <b>Access Denied</b>\n\nIn thread mode, navigation is limited to the current project root.",
                 parse_mode="HTML",
             )
             return
@@ -170,9 +157,7 @@ async def handle_cd_callback(
 
         resumed_session_info = ""
         if claude_integration:
-            existing_session = await claude_integration._find_resumable_session(
-                user_id, new_path
-            )
+            existing_session = await claude_integration._find_resumable_session(user_id, new_path)
             if existing_session:
                 context.user_data["claude_session_id"] = existing_session.session_id
                 resumed_session_info = (
@@ -181,9 +166,7 @@ async def handle_cd_callback(
                 )
             else:
                 context.user_data["claude_session_id"] = None
-                resumed_session_info = (
-                    "\n🆕 No existing session. Send a message to start a new one."
-                )
+                resumed_session_info = "\n🆕 No existing session. Send a message to start a new one."
         else:
             context.user_data["claude_session_id"] = None
             resumed_session_info = "\n🆕 Send a message to start a new session."
@@ -197,14 +180,10 @@ async def handle_cd_callback(
         keyboard = [
             [
                 InlineKeyboardButton("📁 List Files", callback_data="action:ls"),
-                InlineKeyboardButton(
-                    "🆕 New Session", callback_data="action:new_session"
-                ),
+                InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
             ],
             [
-                InlineKeyboardButton(
-                    "📋 Projects", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("📋 Projects", callback_data="action:show_projects"),
                 InlineKeyboardButton("📊 Status", callback_data="action:status"),
             ],
         ]
@@ -220,9 +199,7 @@ async def handle_cd_callback(
 
         # Log successful directory change
         if audit_logger:
-            await audit_logger.log_command(
-                user_id=user_id, command="cd", args=[project_name], success=True
-            )
+            await audit_logger.log_command(user_id=user_id, command="cd", args=[project_name], success=True)
 
     except Exception as e:
         await query.edit_message_text(
@@ -231,14 +208,10 @@ async def handle_cd_callback(
         )
 
         if audit_logger:
-            await audit_logger.log_command(
-                user_id=user_id, command="cd", args=[project_name], success=False
-            )
+            await audit_logger.log_command(user_id=user_id, command="cd", args=[project_name], success=False)
 
 
-async def handle_action_callback(
-    query, action_type: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_action_callback(query, action_type: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle general action callbacks."""
     actions = {
         "help": _handle_help_action,
@@ -260,15 +233,12 @@ async def handle_action_callback(
         await handler(query, context)
     else:
         await query.edit_message_text(
-            f"❌ <b>Unknown Action: {escape_html(action_type)}</b>\n\n"
-            "This action is not implemented yet.",
+            f"❌ <b>Unknown Action: {escape_html(action_type)}</b>\n\nThis action is not implemented yet.",
             parse_mode="HTML",
         )
 
 
-async def handle_confirm_callback(
-    query, confirmation_type: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_confirm_callback(query, confirmation_type: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle confirmation dialogs."""
     if confirmation_type == "yes":
         await query.edit_message_text(
@@ -316,14 +286,10 @@ async def _handle_help_action(query, context: ContextTypes.DEFAULT_TYPE) -> None
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
-        help_text, parse_mode="HTML", reply_markup=reply_markup
-    )
+    await query.edit_message_text(help_text, parse_mode="HTML", reply_markup=reply_markup)
 
 
-async def _handle_show_projects_action(
-    query, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def _handle_show_projects_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle show projects action."""
     settings: Settings = context.bot_data["settings"]
 
@@ -340,8 +306,7 @@ async def _handle_show_projects_action(
             projects = registry.list_enabled()
             if not projects:
                 await query.edit_message_text(
-                    "📁 <b>No Projects Found</b>\n\n"
-                    "No enabled projects found in projects config.",
+                    "📁 <b>No Projects Found</b>\n\nNo enabled projects found in projects config.",
                     parse_mode="HTML",
                 )
                 return
@@ -383,32 +348,22 @@ async def _handle_show_projects_action(
             for j in range(2):
                 if i + j < len(projects):
                     project = projects[i + j]
-                    row.append(
-                        InlineKeyboardButton(
-                            f"📁 {project}", callback_data=f"cd:{project}"
-                        )
-                    )
+                    row.append(InlineKeyboardButton(f"📁 {project}", callback_data=f"cd:{project}"))
             keyboard.append(row)
 
         # Add navigation buttons
         keyboard.append(
             [
                 InlineKeyboardButton("🏠 Root", callback_data="cd:/"),
-                InlineKeyboardButton(
-                    "🔄 Refresh", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("🔄 Refresh", callback_data="action:show_projects"),
             ]
         )
 
         reply_markup = InlineKeyboardMarkup(keyboard)
-        project_list = "\n".join(
-            [f"• <code>{escape_html(project)}/</code>" for project in projects]
-        )
+        project_list = "\n".join([f"• <code>{escape_html(project)}/</code>" for project in projects])
 
         await query.edit_message_text(
-            f"📁 <b>Available Projects</b>\n\n"
-            f"{project_list}\n\n"
-            f"Click a project to navigate to it:",
+            f"📁 <b>Available Projects</b>\n\n{project_list}\n\nClick a project to navigate to it:",
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
@@ -425,24 +380,16 @@ async def _handle_new_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
     context.user_data["claude_session_id"] = None
     context.user_data["session_started"] = True
 
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     keyboard = [
         [
-            InlineKeyboardButton(
-                "📝 Start Coding", callback_data="action:start_coding"
-            ),
-            InlineKeyboardButton(
-                "📁 Change Project", callback_data="action:show_projects"
-            ),
+            InlineKeyboardButton("📝 Start Coding", callback_data="action:start_coding"),
+            InlineKeyboardButton("📁 Change Project", callback_data="action:show_projects"),
         ],
         [
-            InlineKeyboardButton(
-                "📋 Quick Actions", callback_data="action:quick_actions"
-            ),
+            InlineKeyboardButton("📋 Quick Actions", callback_data="action:quick_actions"),
             InlineKeyboardButton("❓ Help", callback_data="action:help"),
         ],
     ]
@@ -475,11 +422,7 @@ async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
                 [
-                    [
-                        InlineKeyboardButton(
-                            "🆕 New Session", callback_data="action:new_session"
-                        )
-                    ],
+                    [InlineKeyboardButton("🆕 New Session", callback_data="action:new_session")],
                     [InlineKeyboardButton("📊 Status", callback_data="action:status")],
                 ]
             ),
@@ -487,9 +430,7 @@ async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     # Get current directory for display
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Clear session data
@@ -501,9 +442,7 @@ async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
     keyboard = [
         [
             InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
-            InlineKeyboardButton(
-                "📁 Change Project", callback_data="action:show_projects"
-            ),
+            InlineKeyboardButton("📁 Change Project", callback_data="action:show_projects"),
         ],
         [
             InlineKeyboardButton("📊 Status", callback_data="action:status"),
@@ -534,15 +473,12 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
     settings: Settings = context.bot_data["settings"]
     claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
 
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         if not claude_integration:
             await query.edit_message_text(
-                "❌ <b>Claude Integration Not Available</b>\n\n"
-                "Claude integration is not properly configured.",
+                "❌ <b>Claude Integration Not Available</b>\n\nClaude integration is not properly configured.",
                 parse_mode="HTML",
             )
             return
@@ -569,8 +505,7 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
         else:
             # No session in context, try to find the most recent session
             await query.edit_message_text(
-                "🔍 <b>Looking for Recent Session</b>\n\n"
-                "Searching for your most recent session in this directory...",
+                "🔍 <b>Looking for Recent Session</b>\n\nSearching for your most recent session in this directory...",
                 parse_mode="HTML",
             )
 
@@ -604,12 +539,8 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
-                            InlineKeyboardButton(
-                                "🆕 New Session", callback_data="action:new_session"
-                            ),
-                            InlineKeyboardButton(
-                                "📊 Status", callback_data="action:status"
-                            ),
+                            InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
+                            InlineKeyboardButton("📊 Status", callback_data="action:status"),
                         ]
                     ]
                 ),
@@ -623,13 +554,7 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
             f"Try starting a new session instead.",
             parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🆕 New Session", callback_data="action:new_session"
-                        )
-                    ]
-                ]
+                [[InlineKeyboardButton("🆕 New Session", callback_data="action:new_session")]]
             ),
         )
 
@@ -641,9 +566,7 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
     settings: Settings = context.bot_data["settings"]
 
     claude_session_id = context.user_data.get("claude_session_id")
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Get usage info if rate limiter is available
@@ -670,9 +593,7 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
     ]
 
     if claude_session_id:
-        status_lines.append(
-            f"🆔 Session ID: <code>{escape_html(claude_session_id[:8])}...</code>"
-        )
+        status_lines.append(f"🆔 Session ID: <code>{escape_html(claude_session_id[:8])}...</code>")
 
     # Add action buttons
     keyboard = []
@@ -680,26 +601,16 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
         keyboard.append(
             [
                 InlineKeyboardButton("🔄 Continue", callback_data="action:continue"),
-                InlineKeyboardButton(
-                    "🛑 End Session", callback_data="action:end_session"
-                ),
+                InlineKeyboardButton("🛑 End Session", callback_data="action:end_session"),
             ]
         )
         keyboard.append(
             [
-                InlineKeyboardButton(
-                    "🆕 New Session", callback_data="action:new_session"
-                ),
+                InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
             ]
         )
     else:
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    "🆕 Start Session", callback_data="action:new_session"
-                )
-            ]
-        )
+        keyboard.append([InlineKeyboardButton("🆕 Start Session", callback_data="action:new_session")])
 
     keyboard.append(
         [
@@ -710,17 +621,13 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await query.edit_message_text(
-        "\n".join(status_lines), parse_mode="HTML", reply_markup=reply_markup
-    )
+    await query.edit_message_text("\n".join(status_lines), parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def _handle_ls_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle ls action."""
     settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         # List directory contents (similar to /ls command)
@@ -773,25 +680,19 @@ async def _handle_ls_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
         keyboard.append(
             [
                 InlineKeyboardButton("🔄 Refresh", callback_data="action:refresh_ls"),
-                InlineKeyboardButton(
-                    "📋 Projects", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("📋 Projects", callback_data="action:show_projects"),
             ]
         )
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await query.edit_message_text(
-            message, parse_mode="HTML", reply_markup=reply_markup
-        )
+        await query.edit_message_text(message, parse_mode="HTML", reply_markup=reply_markup)
 
     except Exception as e:
         await query.edit_message_text(f"❌ Error listing directory: {str(e)}")
 
 
-async def _handle_start_coding_action(
-    query, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def _handle_start_coding_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle start coding action."""
     await query.edit_message_text(
         "🚀 <b>Ready to Code!</b>\n\n"
@@ -806,9 +707,7 @@ async def _handle_start_coding_action(
     )
 
 
-async def _handle_quick_actions_action(
-    query, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def _handle_quick_actions_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle quick actions menu."""
     keyboard = [
         [
@@ -840,9 +739,7 @@ async def _handle_quick_actions_action(
     )
 
 
-async def _handle_refresh_status_action(
-    query, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def _handle_refresh_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle refresh status action."""
     await _handle_status_action(query, context)
 
@@ -867,9 +764,7 @@ async def _handle_export_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
     )
 
 
-async def handle_quick_action_callback(
-    query, action_id: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_quick_action_callback(query, action_id: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle quick action callbacks."""
     user_id = query.from_user.id
 
@@ -878,8 +773,7 @@ async def handle_quick_action_callback(
 
     if not quick_actions:
         await query.edit_message_text(
-            "❌ <b>Quick Actions Not Available</b>\n\n"
-            "Quick actions feature is not available.",
+            "❌ <b>Quick Actions Not Available</b>\n\nQuick actions feature is not available.",
             parse_mode="HTML",
         )
         return
@@ -888,24 +782,20 @@ async def handle_quick_action_callback(
     claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
     if not claude_integration:
         await query.edit_message_text(
-            "❌ <b>Claude Integration Not Available</b>\n\n"
-            "Claude integration is not properly configured.",
+            "❌ <b>Claude Integration Not Available</b>\n\nClaude integration is not properly configured.",
             parse_mode="HTML",
         )
         return
 
     settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         # Get the action from the manager
         action = quick_actions.actions.get(action_id)
         if not action:
             await query.edit_message_text(
-                f"❌ <b>Action Not Found</b>\n\n"
-                f"Quick action '{escape_html(action_id)}' is not available.",
+                f"❌ <b>Action Not Found</b>\n\nQuick action '{escape_html(action_id)}' is not available.",
                 parse_mode="HTML",
             )
             return
@@ -913,7 +803,8 @@ async def handle_quick_action_callback(
         # Execute the action
         await query.edit_message_text(
             f"🚀 <b>Executing {action.icon} {escape_html(action.name)}</b>\n\n"
-            f"Running quick action in directory: <code>{escape_html(str(current_dir.relative_to(settings.approved_directory)))}/</code>\n\n"
+            f"Running quick action in directory: "
+            f"<code>{escape_html(str(current_dir.relative_to(settings.approved_directory)))}/</code>\n\n"
             f"Please wait...",
             parse_mode="HTML",
         )
@@ -927,9 +818,7 @@ async def handle_quick_action_callback(
             # Format and send the response
             response_text = escape_html(claude_response.content)
             if len(response_text) > 4000:
-                response_text = (
-                    response_text[:4000] + "...\n\n<i>(Response truncated)</i>"
-                )
+                response_text = response_text[:4000] + "...\n\n<i>(Response truncated)</i>"
 
             await query.message.reply_text(
                 f"✅ <b>{action.icon} {escape_html(action.name)} Complete</b>\n\n{response_text}",
@@ -937,8 +826,7 @@ async def handle_quick_action_callback(
             )
         else:
             await query.edit_message_text(
-                f"❌ <b>Action Failed</b>\n\n"
-                f"Failed to execute {escape_html(action.name)}. Please try again.",
+                f"❌ <b>Action Failed</b>\n\nFailed to execute {escape_html(action.name)}. Please try again.",
                 parse_mode="HTML",
             )
 
@@ -951,9 +839,7 @@ async def handle_quick_action_callback(
         )
 
 
-async def handle_followup_callback(
-    query, suggestion_hash: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_followup_callback(query, suggestion_hash: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle follow-up suggestion callbacks."""
     user_id = query.from_user.id
 
@@ -962,8 +848,7 @@ async def handle_followup_callback(
 
     if not conversation_enhancer:
         await query.edit_message_text(
-            "❌ <b>Follow-up Not Available</b>\n\n"
-            "Conversation enhancement features are not available.",
+            "❌ <b>Follow-up Not Available</b>\n\nConversation enhancement features are not available.",
             parse_mode="HTML",
         )
         return
@@ -997,15 +882,12 @@ async def handle_followup_callback(
         )
 
         await query.edit_message_text(
-            "❌ <b>Error Processing Follow-up</b>\n\n"
-            "An error occurred while processing your follow-up suggestion.",
+            "❌ <b>Error Processing Follow-up</b>\n\nAn error occurred while processing your follow-up suggestion.",
             parse_mode="HTML",
         )
 
 
-async def handle_conversation_callback(
-    query, action_type: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_conversation_callback(query, action_type: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle conversation control callbacks."""
     user_id = query.from_user.id
     settings: Settings = context.bot_data["settings"]
@@ -1035,20 +917,14 @@ async def handle_conversation_callback(
         context.user_data["claude_session_id"] = None
         context.user_data["session_started"] = False
 
-        current_dir = context.user_data.get(
-            "current_directory", settings.approved_directory
-        )
+        current_dir = context.user_data.get("current_directory", settings.approved_directory)
         relative_path = current_dir.relative_to(settings.approved_directory)
 
         # Create quick action buttons
         keyboard = [
             [
-                InlineKeyboardButton(
-                    "🆕 New Session", callback_data="action:new_session"
-                ),
-                InlineKeyboardButton(
-                    "📁 Change Project", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
+                InlineKeyboardButton("📁 Change Project", callback_data="action:show_projects"),
             ],
             [
                 InlineKeyboardButton("📊 Status", callback_data="action:status"),
@@ -1082,9 +958,7 @@ async def handle_conversation_callback(
         )
 
 
-async def handle_git_callback(
-    query, git_action: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_git_callback(query, git_action: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle git-related callbacks."""
     user_id = query.from_user.id
     settings: Settings = context.bot_data["settings"]
@@ -1092,22 +966,18 @@ async def handle_git_callback(
 
     if not features or not features.is_enabled("git"):
         await query.edit_message_text(
-            "❌ <b>Git Integration Disabled</b>\n\n"
-            "Git integration feature is not enabled.",
+            "❌ <b>Git Integration Disabled</b>\n\nGit integration feature is not enabled.",
             parse_mode="HTML",
         )
         return
 
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         git_integration = features.get_git_integration()
         if not git_integration:
             await query.edit_message_text(
-                "❌ <b>Git Integration Unavailable</b>\n\n"
-                "Git integration service is not available.",
+                "❌ <b>Git Integration Unavailable</b>\n\nGit integration service is not available.",
                 parse_mode="HTML",
             )
             return
@@ -1129,9 +999,7 @@ async def handle_git_callback(
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.edit_message_text(
-                status_message, parse_mode="HTML", reply_markup=reply_markup
-            )
+            await query.edit_message_text(status_message, parse_mode="HTML", reply_markup=reply_markup)
 
         elif git_action == "diff":
             # Show git diff
@@ -1142,21 +1010,15 @@ async def handle_git_callback(
             else:
                 # Clean up diff output for Telegram
                 # Remove emoji symbols that interfere with parsing
-                clean_diff = (
-                    diff_output.replace("➕", "+").replace("➖", "-").replace("📍", "@")
-                )
+                clean_diff = diff_output.replace("➕", "+").replace("➖", "-").replace("📍", "@")
 
                 # Limit diff output
                 max_length = 2000
                 if len(clean_diff) > max_length:
-                    clean_diff = (
-                        clean_diff[:max_length] + "\n\n... output truncated ..."
-                    )
+                    clean_diff = clean_diff[:max_length] + "\n\n... output truncated ..."
 
                 escaped_diff = escape_html(clean_diff)
-                diff_message = (
-                    f"📊 <b>Git Diff</b>\n\n<pre><code>{escaped_diff}</code></pre>"
-                )
+                diff_message = f"📊 <b>Git Diff</b>\n\n<pre><code>{escaped_diff}</code></pre>"
 
             keyboard = [
                 [
@@ -1166,9 +1028,7 @@ async def handle_git_callback(
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.edit_message_text(
-                diff_message, parse_mode="HTML", reply_markup=reply_markup
-            )
+            await query.edit_message_text(diff_message, parse_mode="HTML", reply_markup=reply_markup)
 
         elif git_action == "log":
             # Show git log
@@ -1193,14 +1053,11 @@ async def handle_git_callback(
             ]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
-            await query.edit_message_text(
-                log_message, parse_mode="HTML", reply_markup=reply_markup
-            )
+            await query.edit_message_text(log_message, parse_mode="HTML", reply_markup=reply_markup)
 
         else:
             await query.edit_message_text(
-                f"❌ <b>Unknown Git Action: {escape_html(git_action)}</b>\n\n"
-                "This git action is not recognized.",
+                f"❌ <b>Unknown Git Action: {escape_html(git_action)}</b>\n\nThis git action is not recognized.",
                 parse_mode="HTML",
             )
 
@@ -1217,16 +1074,14 @@ async def handle_git_callback(
         )
 
 
-async def handle_export_callback(
-    query, export_format: str, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def handle_export_callback(query, export_format: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle export format selection callbacks."""
     user_id = query.from_user.id
     features = context.bot_data.get("features")
 
     if export_format == "cancel":
         await query.edit_message_text(
-            "📤 <b>Export Cancelled</b>\n\n" "Session export has been cancelled.",
+            "📤 <b>Export Cancelled</b>\n\nSession export has been cancelled.",
             parse_mode="HTML",
         )
         return
@@ -1234,8 +1089,7 @@ async def handle_export_callback(
     session_exporter = features.get_session_export() if features else None
     if not session_exporter:
         await query.edit_message_text(
-            "❌ <b>Export Unavailable</b>\n\n"
-            "Session export service is not available.",
+            "❌ <b>Export Unavailable</b>\n\nSession export service is not available.",
             parse_mode="HTML",
         )
         return
@@ -1244,7 +1098,7 @@ async def handle_export_callback(
     claude_session_id = context.user_data.get("claude_session_id")
     if not claude_session_id:
         await query.edit_message_text(
-            "❌ <b>No Active Session</b>\n\n" "There's no active session to export.",
+            "❌ <b>No Active Session</b>\n\nThere's no active session to export.",
             parse_mode="HTML",
         )
         return
@@ -1252,15 +1106,12 @@ async def handle_export_callback(
     try:
         # Show processing message
         await query.edit_message_text(
-            f"📤 <b>Exporting Session</b>\n\n"
-            f"Generating {escape_html(export_format.upper())} export...",
+            f"📤 <b>Exporting Session</b>\n\nGenerating {escape_html(export_format.upper())} export...",
             parse_mode="HTML",
         )
 
         # Export session
-        exported_session = await session_exporter.export_session(
-            claude_session_id, export_format
-        )
+        exported_session = await session_exporter.export_session(claude_session_id, export_format)
 
         # Send the exported file
         from io import BytesIO
@@ -1289,9 +1140,7 @@ async def handle_export_callback(
         )
 
     except Exception as e:
-        logger.error(
-            "Export failed", error=str(e), user_id=user_id, format=export_format
-        )
+        logger.error("Export failed", error=str(e), user_id=user_id, format=export_format)
         await query.edit_message_text(
             f"❌ <b>Export Failed</b>\n\n{escape_html(str(e))}",
             parse_mode="HTML",

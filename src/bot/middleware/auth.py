@@ -1,14 +1,15 @@
 """Telegram bot authentication middleware."""
 
+from collections.abc import Callable
 from datetime import UTC, datetime
-from typing import Any, Callable, Dict
+from typing import Any
 
 import structlog
 
 logger = structlog.get_logger()
 
 
-async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -> Any:
+async def auth_middleware(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Check authentication before processing messages.
 
     This middleware:
@@ -19,11 +20,7 @@ async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -
     """
     # Extract user information
     user_id = event.effective_user.id if event.effective_user else None
-    username = (
-        getattr(event.effective_user, "username", None)
-        if event.effective_user
-        else None
-    )
+    username = getattr(event.effective_user, "username", None) if event.effective_user else None
 
     if not user_id:
         logger.warning("No user information in update")
@@ -36,9 +33,7 @@ async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -
     if not auth_manager:
         logger.error("Authentication manager not available in middleware context")
         if event.effective_message:
-            await event.effective_message.reply_text(
-                "🔒 Authentication system unavailable. Please try again later."
-            )
+            await event.effective_message.reply_text("🔒 Authentication system unavailable. Please try again later.")
         return
 
     # Check if user is already authenticated
@@ -57,9 +52,7 @@ async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -
         return await handler(event, data)
 
     # User not authenticated - attempt authentication
-    logger.info(
-        "Attempting authentication for user", user_id=user_id, username=username
-    )
+    logger.info("Attempting authentication for user", user_id=user_id, username=username)
 
     # Try to authenticate (providers will check whitelist and tokens)
     authentication_successful = await auth_manager.authenticate_user(user_id)
@@ -108,7 +101,7 @@ async def auth_middleware(handler: Callable, event: Any, data: Dict[str, Any]) -
         return  # Stop processing
 
 
-async def require_auth(handler: Callable, event: Any, data: Dict[str, Any]) -> Any:
+async def require_auth(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Decorator-style middleware that requires authentication.
 
     This is a stricter version that only allows authenticated users.
@@ -118,15 +111,13 @@ async def require_auth(handler: Callable, event: Any, data: Dict[str, Any]) -> A
 
     if not auth_manager or not auth_manager.is_authenticated(user_id):
         if event.effective_message:
-            await event.effective_message.reply_text(
-                "🔒 Authentication required to use this command."
-            )
+            await event.effective_message.reply_text("🔒 Authentication required to use this command.")
         return
 
     return await handler(event, data)
 
 
-async def admin_required(handler: Callable, event: Any, data: Dict[str, Any]) -> Any:
+async def admin_required(handler: Callable, event: Any, data: dict[str, Any]) -> Any:
     """Middleware that requires admin privileges.
 
     Note: This is a placeholder - admin privileges would need to be
@@ -143,9 +134,7 @@ async def admin_required(handler: Callable, event: Any, data: Dict[str, Any]) ->
     session = auth_manager.get_session(user_id)
     if not session or not session.user_info:
         if event.effective_message:
-            await event.effective_message.reply_text(
-                "🔒 Session information unavailable."
-            )
+            await event.effective_message.reply_text("🔒 Session information unavailable.")
         return
 
     # Check for admin permissions (placeholder logic)
@@ -153,8 +142,7 @@ async def admin_required(handler: Callable, event: Any, data: Dict[str, Any]) ->
     if "admin" not in permissions:
         if event.effective_message:
             await event.effective_message.reply_text(
-                "🔒 <b>Admin Access Required</b>\n\n"
-                "This command requires administrator privileges.",
+                "🔒 <b>Admin Access Required</b>\n\nThis command requires administrator privileges.",
                 parse_mode="HTML",
             )
         return

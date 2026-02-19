@@ -5,7 +5,7 @@ to the event bus when jobs fire.
 """
 
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import (
@@ -50,9 +50,9 @@ class JobScheduler:
         job_name: str,
         cron_expression: str,
         prompt: str,
-        target_chat_ids: Optional[List[int]] = None,
-        working_directory: Optional[Path] = None,
-        skill_name: Optional[str] = None,
+        target_chat_ids: list[int] | None = None,
+        working_directory: Path | None = None,
+        skill_name: str | None = None,
         created_by: int = 0,
     ) -> str:
         """Add a new scheduled job.
@@ -116,12 +116,10 @@ class JobScheduler:
         logger.info("Scheduled job removed", job_id=job_id)
         return True
 
-    async def list_jobs(self) -> List[Dict[str, Any]]:
+    async def list_jobs(self) -> list[dict[str, Any]]:
         """List all scheduled jobs from the database."""
         async with self.db_manager.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM scheduled_jobs WHERE is_active = 1 ORDER BY created_at"
-            )
+            cursor = await conn.execute("SELECT * FROM scheduled_jobs WHERE is_active = 1 ORDER BY created_at")
             rows = await cursor.fetchall()
             return [dict(row) for row in rows]
 
@@ -130,8 +128,8 @@ class JobScheduler:
         job_name: str,
         prompt: str,
         working_directory: str,
-        target_chat_ids: List[int],
-        skill_name: Optional[str],
+        target_chat_ids: list[int],
+        skill_name: str | None,
     ) -> None:
         """Called by APScheduler when a job triggers. Publishes a ScheduledEvent."""
         event = ScheduledEvent(
@@ -154,9 +152,7 @@ class JobScheduler:
         """Load persisted jobs and re-register them with APScheduler."""
         try:
             async with self.db_manager.get_connection() as conn:
-                cursor = await conn.execute(
-                    "SELECT * FROM scheduled_jobs WHERE is_active = 1"
-                )
+                cursor = await conn.execute("SELECT * FROM scheduled_jobs WHERE is_active = 1")
                 rows = list(await cursor.fetchall())
 
             for row in rows:
@@ -166,11 +162,7 @@ class JobScheduler:
 
                     # Parse target_chat_ids from stored string
                     chat_ids_str = row_dict.get("target_chat_ids", "")
-                    chat_ids = (
-                        [int(x) for x in chat_ids_str.split(",") if x.strip()]
-                        if chat_ids_str
-                        else []
-                    )
+                    chat_ids = [int(x) for x in chat_ids_str.split(",") if x.strip()] if chat_ids_str else []
 
                     self._scheduler.add_job(
                         self._fire_event,
@@ -208,9 +200,9 @@ class JobScheduler:
         job_name: str,
         cron_expression: str,
         prompt: str,
-        target_chat_ids: List[int],
+        target_chat_ids: list[int],
         working_directory: str,
-        skill_name: Optional[str],
+        skill_name: str | None,
         created_by: int,
     ) -> None:
         """Persist a job definition to the database."""

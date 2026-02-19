@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from .bus import Event
 
@@ -24,7 +24,7 @@ class WebhookEvent(Event):
 
     provider: str = ""
     event_type_name: str = ""
-    payload: Dict[str, Any] = field(default_factory=dict)
+    payload: dict[str, Any] = field(default_factory=dict)
     delivery_id: str = ""
     source: str = "webhook"
 
@@ -37,8 +37,8 @@ class ScheduledEvent(Event):
     job_name: str = ""
     prompt: str = ""
     working_directory: Path = field(default_factory=lambda: Path("."))
-    target_chat_ids: List[int] = field(default_factory=list)
-    skill_name: Optional[str] = None
+    target_chat_ids: list[int] = field(default_factory=list)
+    skill_name: str | None = None
     source: str = "scheduler"
 
 
@@ -48,7 +48,7 @@ class AgentResponseEvent(Event):
 
     chat_id: int = 0
     text: str = ""
-    parse_mode: Optional[str] = "HTML"
-    reply_to_message_id: Optional[int] = None
+    parse_mode: str | None = "HTML"
+    reply_to_message_id: int | None = None
     source: str = "agent"
-    originating_event_id: Optional[str] = None
+    originating_event_id: str | None = None

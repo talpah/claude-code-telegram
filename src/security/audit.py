@@ -10,7 +10,7 @@ Features:
 import json
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import structlog
 
@@ -27,12 +27,12 @@ class AuditEvent:
     user_id: int
     event_type: str
     success: bool
-    details: Dict[str, Any]
-    ip_address: Optional[str] = None
-    session_id: Optional[str] = None
+    details: dict[str, Any]
+    ip_address: str | None = None
+    session_id: str | None = None
     risk_level: str = "low"  # low, medium, high, critical
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for storage/logging."""
         data = asdict(self)
         data["timestamp"] = self.timestamp.isoformat()
@@ -52,18 +52,16 @@ class AuditStorage:
 
     async def get_events(
         self,
-        user_id: Optional[int] = None,
-        event_type: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        user_id: int | None = None,
+        event_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Retrieve audit events with filters."""
         raise NotImplementedError
 
-    async def get_security_violations(
-        self, user_id: Optional[int] = None, limit: int = 100
-    ) -> List[AuditEvent]:
+    async def get_security_violations(self, user_id: int | None = None, limit: int = 100) -> list[AuditEvent]:
         """Get security violations."""
         raise NotImplementedError
 
@@ -72,7 +70,7 @@ class InMemoryAuditStorage(AuditStorage):
     """In-memory audit storage for development/testing."""
 
     def __init__(self, max_events: int = 10000):
-        self.events: List[AuditEvent] = []
+        self.events: list[AuditEvent] = []
         self.max_events = max_events
 
     async def store_event(self, event: AuditEvent) -> None:
@@ -95,12 +93,12 @@ class InMemoryAuditStorage(AuditStorage):
 
     async def get_events(
         self,
-        user_id: Optional[int] = None,
-        event_type: Optional[str] = None,
-        start_time: Optional[datetime] = None,
-        end_time: Optional[datetime] = None,
+        user_id: int | None = None,
+        event_type: str | None = None,
+        start_time: datetime | None = None,
+        end_time: datetime | None = None,
         limit: int = 100,
-    ) -> List[AuditEvent]:
+    ) -> list[AuditEvent]:
         """Get filtered events."""
         filtered_events = self.events
 
@@ -121,13 +119,9 @@ class InMemoryAuditStorage(AuditStorage):
         filtered_events.sort(key=lambda e: e.timestamp, reverse=True)
         return filtered_events[:limit]
 
-    async def get_security_violations(
-        self, user_id: Optional[int] = None, limit: int = 100
-    ) -> List[AuditEvent]:
+    async def get_security_violations(self, user_id: int | None = None, limit: int = 100) -> list[AuditEvent]:
         """Get security violations."""
-        return await self.get_events(
-            user_id=user_id, event_type="security_violation", limit=limit
-        )
+        return await self.get_events(user_id=user_id, event_type="security_violation", limit=limit)
 
 
 class AuditLogger:
@@ -142,8 +136,8 @@ class AuditLogger:
         user_id: int,
         success: bool,
         method: str,
-        reason: Optional[str] = None,
-        ip_address: Optional[str] = None,
+        reason: str | None = None,
+        ip_address: str | None = None,
     ) -> None:
         """Log authentication attempt."""
         risk_level = "medium" if not success else "low"
@@ -173,7 +167,7 @@ class AuditLogger:
         user_id: int,
         action: str,
         success: bool = True,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ) -> None:
         """Log session-related events."""
         event = AuditEvent(
@@ -191,11 +185,11 @@ class AuditLogger:
         self,
         user_id: int,
         command: str,
-        args: List[str],
+        args: list[str],
         success: bool,
-        working_directory: Optional[str] = None,
-        execution_time: Optional[float] = None,
-        exit_code: Optional[int] = None,
+        working_directory: str | None = None,
+        execution_time: float | None = None,
+        exit_code: int | None = None,
     ) -> None:
         """Log command execution."""
         # Determine risk level based on command
@@ -232,7 +226,7 @@ class AuditLogger:
         file_path: str,
         action: str,  # read, write, delete, create
         success: bool,
-        file_size: Optional[int] = None,
+        file_size: int | None = None,
     ) -> None:
         """Log file access."""
         # Assess risk based on file path and action
@@ -255,7 +249,7 @@ class AuditLogger:
         violation_type: str,
         details: str,
         severity: str = "medium",
-        attempted_action: Optional[str] = None,
+        attempted_action: str | None = None,
     ) -> None:
         """Log security violation."""
         # Map severity to risk level
@@ -310,7 +304,7 @@ class AuditLogger:
 
         await self.storage.store_event(event)
 
-    def _assess_command_risk(self, command: str, args: List[str]) -> str:
+    def _assess_command_risk(self, command: str, args: list[str]) -> str:
         """Assess risk level of command execution."""
         high_risk_commands = {
             "rm",
@@ -376,31 +370,22 @@ class AuditLogger:
         path_lower = file_path.lower()
 
         # High risk: sensitive paths with write/delete
-        if action in risky_actions and any(
-            sensitive in path_lower for sensitive in sensitive_paths
-        ):
+        if action in risky_actions and any(sensitive in path_lower for sensitive in sensitive_paths):
             return "high"
 
         # Medium risk: any sensitive path access or risky actions
-        if (
-            any(sensitive in path_lower for sensitive in sensitive_paths)
-            or action in risky_actions
-        ):
+        if any(sensitive in path_lower for sensitive in sensitive_paths) or action in risky_actions:
             return "medium"
 
         return "low"
 
-    async def get_user_activity_summary(
-        self, user_id: int, hours: int = 24
-    ) -> Dict[str, Any]:
+    async def get_user_activity_summary(self, user_id: int, hours: int = 24) -> dict[str, Any]:
         """Get activity summary for user."""
         start_time = datetime.now(UTC) - timedelta(hours=hours)
-        events = await self.storage.get_events(
-            user_id=user_id, start_time=start_time, limit=1000
-        )
+        events = await self.storage.get_events(user_id=user_id, start_time=start_time, limit=1000)
 
         # Aggregate statistics
-        summary: Dict[str, Any] = {
+        summary: dict[str, Any] = {
             "user_id": user_id,
             "period_hours": hours,
             "total_events": len(events),
@@ -418,15 +403,11 @@ class AuditLogger:
             for event in events:
                 # Count by type
                 event_type = event.event_type
-                summary["event_types"][event_type] = (
-                    summary["event_types"].get(event_type, 0) + 1
-                )
+                summary["event_types"][event_type] = summary["event_types"].get(event_type, 0) + 1
 
                 # Count by risk level
                 risk_level = event.risk_level
-                summary["risk_levels"][risk_level] = (
-                    summary["risk_levels"].get(risk_level, 0) + 1
-                )
+                summary["risk_levels"][risk_level] = summary["risk_levels"].get(risk_level, 0) + 1
 
                 # Count successes
                 if event.success:
@@ -440,7 +421,7 @@ class AuditLogger:
 
         return summary
 
-    async def get_security_dashboard(self) -> Dict[str, Any]:
+    async def get_security_dashboard(self) -> dict[str, Any]:
         """Get security dashboard data."""
         # Get recent events (last 24 hours)
         start_time = datetime.now(UTC) - timedelta(hours=24)
@@ -449,7 +430,7 @@ class AuditLogger:
         # Get security violations
         violations = await self.storage.get_security_violations(limit=100)
 
-        dashboard: Dict[str, Any] = {
+        dashboard: dict[str, Any] = {
             "period": "24_hours",
             "total_events": len(recent_events),
             "security_violations": len(violations),
@@ -463,9 +444,7 @@ class AuditLogger:
         for event in recent_events:
             # Risk distribution
             risk = event.risk_level
-            dashboard["risk_distribution"][risk] = (
-                dashboard["risk_distribution"].get(risk, 0) + 1
-            )
+            dashboard["risk_distribution"][risk] = dashboard["risk_distribution"].get(risk, 0) + 1
 
             # Authentication failures
             if event.event_type == "auth_attempt" and not event.success:

@@ -6,7 +6,6 @@ Claude's output which contains underscores, asterisks, brackets, etc.
 """
 
 import re
-from typing import List, Tuple
 
 
 def escape_html(text: str) -> str:
@@ -36,7 +35,7 @@ def markdown_to_telegram_html(text: str) -> str:
     8. Convert strikethrough (~~text~~)
     9. Restore placeholders
     """
-    placeholders: List[Tuple[str, str]] = []
+    placeholders: list[tuple[str, str]] = []
     placeholder_counter = 0
 
     def _make_placeholder(html_content: str) -> str:

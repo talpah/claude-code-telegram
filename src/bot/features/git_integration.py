@@ -6,7 +6,6 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Set, Tuple
 
 from src.config.settings import Settings
 from src.exceptions import SecurityError
@@ -23,10 +22,10 @@ class GitStatus:
     """Git repository status."""
 
     branch: str
-    modified: List[str]
-    added: List[str]
-    deleted: List[str]
-    untracked: List[str]
+    modified: list[str]
+    added: list[str]
+    deleted: list[str]
+    untracked: list[str]
     ahead: int
     behind: int
 
@@ -53,7 +52,7 @@ class GitIntegration:
     """Safe git integration for repositories."""
 
     # Safe git commands allowed
-    SAFE_COMMANDS: Set[str] = {
+    SAFE_COMMANDS: set[str] = {
         "status",
         "log",
         "diff",
@@ -85,9 +84,7 @@ class GitIntegration:
         self.settings = settings
         self.approved_dir = Path(settings.approved_directory)
 
-    async def execute_git_command(
-        self, command: List[str], cwd: Path
-    ) -> Tuple[str, str]:
+    async def execute_git_command(self, command: list[str], cwd: Path) -> tuple[str, str]:
         """Execute safe git command.
 
         Args:
@@ -138,7 +135,7 @@ class GitIntegration:
 
             return stdout.decode(), stderr.decode()
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             raise GitError("Git command timed out")
         except Exception as e:
             logger.error(f"Git command error: {e}")
@@ -154,15 +151,11 @@ class GitIntegration:
             Git status information
         """
         # Get branch and tracking info
-        branch_out, _ = await self.execute_git_command(
-            ["git", "branch", "--show-current"], repo_path
-        )
+        branch_out, _ = await self.execute_git_command(["git", "branch", "--show-current"], repo_path)
         branch = branch_out.strip() or "HEAD"
 
         # Get file status
-        status_out, _ = await self.execute_git_command(
-            ["git", "status", "--porcelain=v1"], repo_path
-        )
+        status_out, _ = await self.execute_git_command(["git", "status", "--porcelain=v1"], repo_path)
 
         modified = []
         added = []
@@ -212,9 +205,7 @@ class GitIntegration:
             behind=behind,
         )
 
-    async def get_diff(
-        self, repo_path: Path, staged: bool = False, file_path: Optional[str] = None
-    ) -> str:
+    async def get_diff(self, repo_path: Path, staged: bool = False, file_path: str | None = None) -> str:
         """Get repository diff.
 
         Args:
@@ -259,9 +250,7 @@ class GitIntegration:
 
         return "\n".join(lines)
 
-    async def get_file_history(
-        self, repo_path: Path, file_path: str, limit: int = 10
-    ) -> List[CommitInfo]:
+    async def get_file_history(self, repo_path: Path, file_path: str, limit: int = 10) -> list[CommitInfo]:
         """Get file commit history.
 
         Args:
@@ -385,7 +374,7 @@ class GitIntegration:
 
         return "\n".join(lines)
 
-    def format_history(self, commits: List[CommitInfo]) -> str:
+    def format_history(self, commits: list[CommitInfo]) -> str:
         """Format commit history for display.
 
         Args:
@@ -400,9 +389,7 @@ class GitIntegration:
         lines = ["📜 Commit History:"]
 
         for commit in commits:
-            lines.append(
-                f"\n🔹 {commit.hash} - {commit.date.strftime('%Y-%m-%d %H:%M')}"
-            )
+            lines.append(f"\n🔹 {commit.hash} - {commit.date.strftime('%Y-%m-%d %H:%M')}")
             lines.append(f"   👤 {commit.author}")
             lines.append(f"   💬 {commit.message}")
 
@@ -412,8 +399,6 @@ class GitIntegration:
                     stats.append(f"+{commit.insertions}")
                 if commit.deletions:
                     stats.append(f"-{commit.deletions}")
-                lines.append(
-                    f"   📊 {commit.files_changed} files changed, {' '.join(stats)}"
-                )
+                lines.append(f"   📊 {commit.files_changed} files changed, {' '.join(stats)}")
 
         return "\n".join(lines)

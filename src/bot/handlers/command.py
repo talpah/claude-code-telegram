@@ -1,7 +1,6 @@
 """Command handlers for bot operations."""
 
 from pathlib import Path
-from typing import Optional
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -26,9 +25,7 @@ def _is_within_root(path: Path, root: Path) -> bool:
         return False
 
 
-def _get_thread_project_root(
-    settings: Settings, context: ContextTypes.DEFAULT_TYPE
-) -> Optional[Path]:
+def _get_thread_project_root(settings: Settings, context: ContextTypes.DEFAULT_TYPE) -> Path | None:
     """Get thread project root when strict thread mode is active."""
     if not settings.enable_project_threads:
         return None
@@ -55,21 +52,15 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     if settings.enable_project_threads and settings.project_threads_mode == "private":
         if not _is_private_chat(update):
             await update.message.reply_text(
-                "🚫 <b>Private Topics Mode</b>\n\n"
-                "Use this bot in a private chat and run <code>/start</code> there.",
+                "🚫 <b>Private Topics Mode</b>\n\nUse this bot in a private chat and run <code>/start</code> there.",
                 parse_mode="HTML",
             )
             return
 
-    if (
-        settings.enable_project_threads
-        and settings.project_threads_mode == "private"
-        and _is_private_chat(update)
-    ):
+    if settings.enable_project_threads and settings.project_threads_mode == "private" and _is_private_chat(update):
         if manager is None:
             await update.message.reply_text(
-                "❌ <b>Project thread mode is misconfigured</b>\n\n"
-                "Thread manager is not initialized.",
+                "❌ <b>Project thread mode is misconfigured</b>\n\nThread manager is not initialized.",
                 parse_mode="HTML",
             )
             return
@@ -102,9 +93,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             return
         except Exception as e:
             sync_section = (
-                "\n\n⚠️ <b>Topic Sync Warning</b>\n"
-                f"{escape_html(str(e))}\n\n"
-                "Run <code>/sync_threads</code> to retry."
+                f"\n\n⚠️ <b>Topic Sync Warning</b>\n{escape_html(str(e))}\n\nRun <code>/sync_threads</code> to retry."
             )
 
     welcome_message = (
@@ -131,9 +120,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     # Add quick action buttons
     keyboard = [
         [
-            InlineKeyboardButton(
-                "📁 Show Projects", callback_data="action:show_projects"
-            ),
+            InlineKeyboardButton("📁 Show Projects", callback_data="action:show_projects"),
             InlineKeyboardButton("❓ Get Help", callback_data="action:help"),
         ],
         [
@@ -143,15 +130,11 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        welcome_message, parse_mode="HTML", reply_markup=reply_markup
-    )
+    await update.message.reply_text(welcome_message, parse_mode="HTML", reply_markup=reply_markup)
 
     # Log command
     if audit_logger:
-        await audit_logger.log_command(
-            user_id=user.id, command="start", args=[], success=True
-        )
+        await audit_logger.log_command(user_id=user.id, command="start", args=[], success=True)
 
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -208,27 +191,20 @@ async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     user_id = update.effective_user.id
 
     if not settings.enable_project_threads:
-        await update.message.reply_text(
-            "ℹ️ <b>Project thread mode is disabled.</b>", parse_mode="HTML"
-        )
+        await update.message.reply_text("ℹ️ <b>Project thread mode is disabled.</b>", parse_mode="HTML")
         return
 
     manager = context.bot_data.get("project_threads_manager")
     if not manager:
-        await update.message.reply_text(
-            "❌ <b>Project thread manager not initialized.</b>", parse_mode="HTML"
-        )
+        await update.message.reply_text("❌ <b>Project thread manager not initialized.</b>", parse_mode="HTML")
         return
 
-    status_msg = await update.message.reply_text(
-        "🔄 <b>Syncing project topics...</b>", parse_mode="HTML"
-    )
+    status_msg = await update.message.reply_text("🔄 <b>Syncing project topics...</b>", parse_mode="HTML")
 
     if settings.project_threads_mode == "private":
         if not _is_private_chat(update):
             await status_msg.edit_text(
-                "❌ <b>Private Thread Mode</b>\n\n"
-                "Run <code>/sync_threads</code> in your private chat with the bot.",
+                "❌ <b>Private Thread Mode</b>\n\nRun <code>/sync_threads</code> in your private chat with the bot.",
                 parse_mode="HTML",
             )
             return
@@ -236,15 +212,11 @@ async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     else:
         if settings.project_threads_chat_id is None:
             await status_msg.edit_text(
-                "❌ <b>Group Thread Mode Misconfigured</b>\n\n"
-                "Set <code>PROJECT_THREADS_CHAT_ID</code> first.",
+                "❌ <b>Group Thread Mode Misconfigured</b>\n\nSet <code>PROJECT_THREADS_CHAT_ID</code> first.",
                 parse_mode="HTML",
             )
             return
-        if (
-            not update.effective_chat
-            or update.effective_chat.id != settings.project_threads_chat_id
-        ):
+        if not update.effective_chat or update.effective_chat.id != settings.project_threads_chat_id:
             await status_msg.edit_text(
                 "❌ <b>Group Thread Mode</b>\n\n"
                 "Run <code>/sync_threads</code> in the configured project threads group.",
@@ -306,9 +278,7 @@ async def new_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     settings: Settings = context.bot_data["settings"]
 
     # Get current directory (default to approved directory)
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Track what was cleared for user feedback
@@ -321,23 +291,15 @@ async def new_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
     cleared_info = ""
     if old_session_id:
-        cleared_info = (
-            f"\n🗑️ Previous session <code>{old_session_id[:8]}...</code> cleared."
-        )
+        cleared_info = f"\n🗑️ Previous session <code>{old_session_id[:8]}...</code> cleared."
 
     keyboard = [
         [
-            InlineKeyboardButton(
-                "📝 Start Coding", callback_data="action:start_coding"
-            ),
-            InlineKeyboardButton(
-                "📁 Change Project", callback_data="action:show_projects"
-            ),
+            InlineKeyboardButton("📝 Start Coding", callback_data="action:start_coding"),
+            InlineKeyboardButton("📁 Change Project", callback_data="action:show_projects"),
         ],
         [
-            InlineKeyboardButton(
-                "📋 Quick Actions", callback_data="action:quick_actions"
-            ),
+            InlineKeyboardButton("📋 Quick Actions", callback_data="action:quick_actions"),
             InlineKeyboardButton("❓ Help", callback_data="action:help"),
         ],
     ]
@@ -365,15 +327,12 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     prompt = " ".join(context.args) if context.args else None
     default_prompt = "Please continue where we left off"
 
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         if not claude_integration:
             await update.message.reply_text(
-                "❌ <b>Claude Integration Not Available</b>\n\n"
-                "Claude integration is not properly configured."
+                "❌ <b>Claude Integration Not Available</b>\n\nClaude integration is not properly configured."
             )
             return
 
@@ -401,8 +360,7 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         else:
             # No session in context, try to find the most recent session
             status_msg = await update.message.reply_text(
-                "🔍 <b>Looking for Recent Session</b>\n\n"
-                "Searching for your most recent session in this directory...",
+                "🔍 <b>Looking for Recent Session</b>\n\nSearching for your most recent session in this directory...",
                 parse_mode="HTML",
             )
 
@@ -424,9 +382,7 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             from ..utils.formatting import ResponseFormatter
 
             formatter = ResponseFormatter(settings)
-            formatted_messages = formatter.format_claude_response(
-                claude_response.content
-            )
+            formatted_messages = formatter.format_claude_response(claude_response.content)
 
             for msg in formatted_messages:
                 await update.message.reply_text(
@@ -458,12 +414,8 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                 reply_markup=InlineKeyboardMarkup(
                     [
                         [
-                            InlineKeyboardButton(
-                                "🆕 New Session", callback_data="action:new_session"
-                            ),
-                            InlineKeyboardButton(
-                                "📊 Status", callback_data="action:status"
-                            ),
+                            InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
+                            InlineKeyboardButton("📊 Status", callback_data="action:status"),
                         ]
                     ]
                 ),
@@ -509,9 +461,7 @@ async def list_files(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
     audit_logger: AuditLogger = context.bot_data.get("audit_logger")
 
     # Get current directory
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         # List directory contents
@@ -570,17 +520,13 @@ async def list_files(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         keyboard.append(
             [
                 InlineKeyboardButton("🔄 Refresh", callback_data="action:refresh_ls"),
-                InlineKeyboardButton(
-                    "📁 Projects", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("📁 Projects", callback_data="action:show_projects"),
             ]
         )
 
         reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
-        await update.message.reply_text(
-            message, parse_mode="HTML", reply_markup=reply_markup
-        )
+        await update.message.reply_text(message, parse_mode="HTML", reply_markup=reply_markup)
 
         # Log successful command
         if audit_logger:
@@ -620,9 +566,7 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     target_path = " ".join(context.args)
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     project_root = _get_thread_project_root(settings, context)
     directory_root = project_root or settings.approved_directory
 
@@ -637,14 +581,10 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         else:
             # Validate path using security validator
             if security_validator:
-                valid, resolved_path, error = security_validator.validate_path(
-                    target_path, current_dir
-                )
+                valid, resolved_path, error = security_validator.validate_path(target_path, current_dir)
 
                 if not valid:
-                    await update.message.reply_text(
-                        f"❌ <b>Access Denied</b>\n\n{error}"
-                    )
+                    await update.message.reply_text(f"❌ <b>Access Denied</b>\n\n{error}")
 
                     # Log security violation
                     if audit_logger:
@@ -661,8 +601,7 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         if project_root and not _is_within_root(resolved_path, project_root):
             await update.message.reply_text(
-                "❌ <b>Access Denied</b>\n\n"
-                "In thread mode, navigation is limited to the current project root.",
+                "❌ <b>Access Denied</b>\n\nIn thread mode, navigation is limited to the current project root.",
                 parse_mode="HTML",
             )
             return
@@ -684,14 +623,10 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         context.user_data["current_directory"] = resolved_path
 
         # Look up existing session for the new directory instead of clearing
-        claude_integration: ClaudeIntegration = context.bot_data.get(
-            "claude_integration"
-        )
+        claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
         resumed_session_info = ""
         if claude_integration:
-            existing_session = await claude_integration._find_resumable_session(
-                user_id, resolved_path
-            )
+            existing_session = await claude_integration._find_resumable_session(user_id, resolved_path)
             if existing_session:
                 context.user_data["claude_session_id"] = existing_session.session_id
                 resumed_session_info = (
@@ -701,9 +636,7 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             else:
                 # No session for this directory - clear the current one
                 context.user_data["claude_session_id"] = None
-                resumed_session_info = (
-                    "\n🆕 No existing session. Send a message to start a new one."
-                )
+                resumed_session_info = "\n🆕 No existing session. Send a message to start a new one."
 
         # Send confirmation
         relative_base = project_root or settings.approved_directory
@@ -731,14 +664,10 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         logger.error("Error in change_directory command", error=str(e), user_id=user_id)
 
 
-async def print_working_directory(
-    update: Update, context: ContextTypes.DEFAULT_TYPE
-) -> None:
+async def print_working_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /pwd command."""
     settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     relative_path = current_dir.relative_to(settings.approved_directory)
     absolute_path = str(current_dir)
@@ -781,8 +710,7 @@ async def show_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             projects = registry.list_enabled()
             if not projects:
                 await update.message.reply_text(
-                    "📁 <b>No Projects Found</b>\n\n"
-                    "No enabled projects found in projects config.",
+                    "📁 <b>No Projects Found</b>\n\nNo enabled projects found in projects config.",
                     parse_mode="HTML",
                 )
                 return
@@ -823,20 +751,14 @@ async def show_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             for j in range(2):
                 if i + j < len(projects):
                     project = projects[i + j]
-                    row.append(
-                        InlineKeyboardButton(
-                            f"📁 {project}", callback_data=f"cd:{project}"
-                        )
-                    )
+                    row.append(InlineKeyboardButton(f"📁 {project}", callback_data=f"cd:{project}"))
             keyboard.append(row)
 
         # Add navigation buttons
         keyboard.append(
             [
                 InlineKeyboardButton("🏠 Go to Root", callback_data="cd:/"),
-                InlineKeyboardButton(
-                    "🔄 Refresh", callback_data="action:show_projects"
-                ),
+                InlineKeyboardButton("🔄 Refresh", callback_data="action:show_projects"),
             ]
         )
 
@@ -845,9 +767,7 @@ async def show_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         project_list = "\n".join([f"• <code>{project}/</code>" for project in projects])
 
         await update.message.reply_text(
-            f"📁 <b>Available Projects</b>\n\n"
-            f"{project_list}\n\n"
-            f"Click a project below to navigate to it:",
+            f"📁 <b>Available Projects</b>\n\n{project_list}\n\nClick a project below to navigate to it:",
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
@@ -864,9 +784,7 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     # Get session info
     claude_session_id = context.user_data.get("claude_session_id")
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Get rate limiter info if available
@@ -887,17 +805,12 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Check if there's a resumable session from the database
     resumable_info = ""
     if not claude_session_id:
-        claude_integration: ClaudeIntegration = context.bot_data.get(
-            "claude_integration"
-        )
+        claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
         if claude_integration:
-            existing = await claude_integration._find_resumable_session(
-                user_id, current_dir
-            )
+            existing = await claude_integration._find_resumable_session(user_id, current_dir)
             if existing:
                 resumable_info = (
-                    f"🔄 Resumable: <code>{existing.session_id[:8]}...</code> "
-                    f"({existing.message_count} msgs)"
+                    f"🔄 Resumable: <code>{existing.session_id[:8]}...</code> ({existing.message_count} msgs)"
                 )
 
     # Format status message
@@ -922,19 +835,11 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         keyboard.append(
             [
                 InlineKeyboardButton("🔄 Continue", callback_data="action:continue"),
-                InlineKeyboardButton(
-                    "🆕 New Session", callback_data="action:new_session"
-                ),
+                InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
             ]
         )
     else:
-        keyboard.append(
-            [
-                InlineKeyboardButton(
-                    "🆕 Start Session", callback_data="action:new_session"
-                )
-            ]
-        )
+        keyboard.append([InlineKeyboardButton("🆕 Start Session", callback_data="action:new_session")])
 
     keyboard.append(
         [
@@ -945,9 +850,7 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    await update.message.reply_text(
-        "\n".join(status_lines), parse_mode="HTML", reply_markup=reply_markup
-    )
+    await update.message.reply_text("\n".join(status_lines), parse_mode="HTML", reply_markup=reply_markup)
 
 
 async def export_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1026,9 +929,7 @@ async def end_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # Get current directory for display
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Clear session data
@@ -1040,9 +941,7 @@ async def end_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     keyboard = [
         [
             InlineKeyboardButton("🆕 New Session", callback_data="action:new_session"),
-            InlineKeyboardButton(
-                "📁 Change Project", callback_data="action:show_projects"
-            ),
+            InlineKeyboardButton("📁 Change Project", callback_data="action:show_projects"),
         ],
         [
             InlineKeyboardButton("📊 Status", callback_data="action:status"),
@@ -1084,16 +983,13 @@ async def quick_actions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # Get current directory
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         quick_action_manager = features.get_quick_actions()
         if not quick_action_manager:
             await update.message.reply_text(
-                "❌ <b>Quick Actions Unavailable</b>\n\n"
-                "Quick actions service is not available."
+                "❌ <b>Quick Actions Unavailable</b>\n\nQuick actions service is not available."
             )
             return
 
@@ -1118,9 +1014,7 @@ async def quick_actions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
         relative_path = current_dir.relative_to(settings.approved_directory)
         await update.message.reply_text(
-            f"⚡ <b>Quick Actions</b>\n\n"
-            f"📂 Context: <code>{relative_path}/</code>\n\n"
-            f"Select an action to execute:",
+            f"⚡ <b>Quick Actions</b>\n\n📂 Context: <code>{relative_path}/</code>\n\nSelect an action to execute:",
             parse_mode="HTML",
             reply_markup=keyboard,
         )
@@ -1145,16 +1039,13 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # Get current directory
-    current_dir = context.user_data.get(
-        "current_directory", settings.approved_directory
-    )
+    current_dir = context.user_data.get("current_directory", settings.approved_directory)
 
     try:
         git_integration = features.get_git_integration()
         if not git_integration:
             await update.message.reply_text(
-                "❌ <b>Git Integration Unavailable</b>\n\n"
-                "Git integration service is not available."
+                "❌ <b>Git Integration Unavailable</b>\n\nGit integration service is not available."
             )
             return
 
@@ -1162,7 +1053,8 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         if not (current_dir / ".git").exists():
             await update.message.reply_text(
                 f"📂 <b>Not a Git Repository</b>\n\n"
-                f"Current directory <code>{current_dir.relative_to(settings.approved_directory)}/</code> is not a git repository.\n\n"
+                f"Current directory <code>{current_dir.relative_to(settings.approved_directory)}/</code> "
+                f"is not a git repository.\n\n"
                 f"<b>Options:</b>\n"
                 f"• Navigate to a git repository with <code>/cd</code>\n"
                 f"• Initialize a new repository (ask Claude to help)\n"
@@ -1175,7 +1067,7 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         # Format status message
         relative_path = current_dir.relative_to(settings.approved_directory)
-        status_message = f"🔗 <b>Git Repository Status</b>\n\n"
+        status_message = "🔗 <b>Git Repository Status</b>\n\n"
         status_message += f"📂 Directory: <code>{relative_path}/</code>\n"
         status_message += f"🌿 Branch: <code>{git_status.branch}</code>\n"
 
@@ -1186,7 +1078,7 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         # Show file changes
         if not git_status.is_clean:
-            status_message += f"\n<b>Changes:</b>\n"
+            status_message += "\n<b>Changes:</b>\n"
             if git_status.modified:
                 status_message += f"📝 Modified: {len(git_status.modified)} files\n"
             if git_status.added:
@@ -1212,9 +1104,7 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
-            status_message, parse_mode="HTML", reply_markup=reply_markup
-        )
+        await update.message.reply_text(status_message, parse_mode="HTML", reply_markup=reply_markup)
 
     except Exception as e:
         await update.message.reply_text(f"❌ <b>Git Error</b>\n\n{str(e)}")

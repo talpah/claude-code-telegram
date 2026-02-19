@@ -9,7 +9,7 @@ Features:
 
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any
 
 import structlog
 
@@ -22,18 +22,16 @@ class OutputParser:
     """Parse various Claude Code output formats."""
 
     @staticmethod
-    def parse_json_output(output: str) -> Dict[str, Any]:
+    def parse_json_output(output: str) -> dict[str, Any]:
         """Parse single JSON output."""
         try:
             return json.loads(output)
         except json.JSONDecodeError as e:
-            logger.error(
-                "Failed to parse JSON output", output=output[:200], error=str(e)
-            )
+            logger.error("Failed to parse JSON output", output=output[:200], error=str(e))
             raise ClaudeParsingError(f"Failed to parse JSON output: {e}")
 
     @staticmethod
-    def parse_stream_json(lines: List[str]) -> List[Dict[str, Any]]:
+    def parse_stream_json(lines: list[str]) -> list[dict[str, Any]]:
         """Parse streaming JSON output."""
         messages = []
 
@@ -52,7 +50,7 @@ class OutputParser:
         return messages
 
     @staticmethod
-    def extract_code_blocks(content: str) -> List[Dict[str, str]]:
+    def extract_code_blocks(content: str) -> list[dict[str, str]]:
         """Extract code blocks from response."""
         code_blocks = []
         pattern = r"```(\w+)?\n(.*?)```"
@@ -67,7 +65,7 @@ class OutputParser:
         return code_blocks
 
     @staticmethod
-    def extract_file_operations(messages: List[Dict]) -> List[Dict[str, Any]]:
+    def extract_file_operations(messages: list[dict]) -> list[dict[str, Any]]:
         """Extract file operations from tool calls."""
         file_ops = []
 
@@ -95,10 +93,8 @@ class OutputParser:
                     file_ops.append(
                         {
                             "operation": tool_name,
-                            "path": tool_input.get("path")
-                            or tool_input.get("file_path"),
-                            "content": tool_input.get("content")
-                            or tool_input.get("new_string"),
+                            "path": tool_input.get("path") or tool_input.get("file_path"),
+                            "content": tool_input.get("content") or tool_input.get("new_string"),
                             "old_content": tool_input.get("old_string"),
                             "timestamp": msg.get("timestamp"),
                         }
@@ -108,7 +104,7 @@ class OutputParser:
         return file_ops
 
     @staticmethod
-    def extract_shell_commands(messages: List[Dict]) -> List[Dict[str, Any]]:
+    def extract_shell_commands(messages: list[dict]) -> list[dict[str, Any]]:
         """Extract shell commands from tool calls."""
         shell_commands = []
 
@@ -139,7 +135,7 @@ class OutputParser:
         return shell_commands
 
     @staticmethod
-    def extract_response_text(messages: List[Dict]) -> str:
+    def extract_response_text(messages: list[dict]) -> str:
         """Extract all text content from assistant messages."""
         text_parts = []
 
@@ -155,7 +151,7 @@ class OutputParser:
         return "\n".join(text_parts)
 
     @staticmethod
-    def extract_tool_results(messages: List[Dict]) -> List[Dict[str, Any]]:
+    def extract_tool_results(messages: list[dict]) -> list[dict[str, Any]]:
         """Extract tool results from tool_result messages."""
         tool_results = []
 
@@ -175,7 +171,7 @@ class OutputParser:
         return tool_results
 
     @staticmethod
-    def detect_errors(messages: List[Dict]) -> List[Dict[str, Any]]:
+    def detect_errors(messages: list[dict]) -> list[dict[str, Any]]:
         """Detect errors in message stream."""
         errors = []
 
@@ -208,7 +204,7 @@ class OutputParser:
         return errors
 
     @staticmethod
-    def summarize_session(messages: List[Dict]) -> Dict[str, Any]:
+    def summarize_session(messages: list[dict]) -> dict[str, Any]:
         """Create a summary of the session."""
         summary = {
             "total_messages": len(messages),
@@ -262,7 +258,7 @@ class ResponseFormatter:
         """Initialize formatter."""
         self.max_message_length = max_message_length
 
-    def format_response(self, content: str, include_metadata: bool = True) -> List[str]:
+    def format_response(self, content: str, include_metadata: bool = True) -> list[str]:
         """Format response content into Telegram messages."""
         if not content.strip():
             return ["_(Empty response)_"]
@@ -284,7 +280,7 @@ class ResponseFormatter:
 
         return messages
 
-    def _split_preserving_code_blocks(self, text: str) -> List[str]:
+    def _split_preserving_code_blocks(self, text: str) -> list[str]:
         """Split text while preserving code blocks."""
         parts = []
         current_part = ""
@@ -315,7 +311,7 @@ class ResponseFormatter:
 
         return parts
 
-    def _split_long_text(self, text: str) -> List[str]:
+    def _split_long_text(self, text: str) -> list[str]:
         """Split text that's too long for a single message."""
         parts = []
         current = ""

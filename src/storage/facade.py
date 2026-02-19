@@ -4,7 +4,7 @@ Provides simple API for the rest of the application.
 """
 
 from datetime import UTC, datetime
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 
@@ -69,7 +69,7 @@ class Storage:
         session_id: str,
         prompt: str,
         response: ClaudeResponse,
-        ip_address: Optional[str] = None,
+        ip_address: str | None = None,
     ):
         """Save complete Claude interaction."""
         logger.info(
@@ -148,9 +148,7 @@ class Storage:
         )
         await self.audit.log_event(audit_event)
 
-    async def get_or_create_user(
-        self, user_id: int, username: Optional[str] = None
-    ) -> UserModel:
+    async def get_or_create_user(self, user_id: int, username: str | None = None) -> UserModel:
         """Get or create user."""
         user = await self.users.get_user(user_id)
 
@@ -167,9 +165,7 @@ class Storage:
 
         return user
 
-    async def create_session(
-        self, user_id: int, project_path: str, session_id: str
-    ) -> SessionModel:
+    async def create_session(self, user_id: int, project_path: str, session_id: str) -> SessionModel:
         """Create new session."""
         session = SessionModel(
             session_id=session_id,
@@ -193,9 +189,9 @@ class Storage:
         self,
         user_id: int,
         event_type: str,
-        event_data: Dict[str, Any],
+        event_data: dict[str, Any],
         success: bool = True,
-        ip_address: Optional[str] = None,
+        ip_address: str | None = None,
     ):
         """Log security-related event."""
         audit_event = AuditLogModel(
@@ -213,7 +209,7 @@ class Storage:
         self,
         user_id: int,
         event_type: str,
-        event_data: Dict[str, Any],
+        event_data: dict[str, Any],
         success: bool = True,
     ):
         """Log bot-related event."""
@@ -234,7 +230,7 @@ class Storage:
         user = await self.users.get_user(user_id)
         return user.is_allowed if user else False
 
-    async def get_user_session_summary(self, user_id: int) -> Dict[str, Any]:
+    async def get_user_session_summary(self, user_id: int) -> dict[str, Any]:
         """Get user session summary."""
         sessions = await self.sessions.get_user_sessions(user_id, active_only=False)
         active_sessions = [s for s in sessions if s.is_active]
@@ -247,9 +243,7 @@ class Storage:
             "projects": list(set(s.project_path for s in sessions)),
         }
 
-    async def get_session_history(
-        self, session_id: str, limit: int = 50
-    ) -> Dict[str, Any]:
+    async def get_session_history(self, session_id: str, limit: int = 50) -> dict[str, Any]:
         """Get session history with messages and tools."""
         session = await self.sessions.get_session(session_id)
         if not session:
@@ -264,7 +258,7 @@ class Storage:
             "tool_usage": [t.to_dict() for t in tools],
         }
 
-    async def cleanup_old_data(self, days: int = 30) -> Dict[str, int]:
+    async def cleanup_old_data(self, days: int = 30) -> dict[str, int]:
         """Cleanup old data."""
         logger.info("Starting data cleanup", days=days)
 
@@ -275,7 +269,7 @@ class Storage:
 
         return {"sessions_cleaned": sessions_cleaned}
 
-    async def get_user_dashboard(self, user_id: int) -> Dict[str, Any]:
+    async def get_user_dashboard(self, user_id: int) -> dict[str, Any]:
         """Get comprehensive user dashboard data."""
         # Get user info
         user = await self.users.get_user(user_id)
@@ -306,7 +300,7 @@ class Storage:
             "daily_costs": [c.to_dict() for c in daily_costs],
         }
 
-    async def get_admin_dashboard(self) -> Dict[str, Any]:
+    async def get_admin_dashboard(self) -> dict[str, Any]:
         """Get admin dashboard data."""
         # Get system stats
         system_stats = await self.analytics.get_system_stats()

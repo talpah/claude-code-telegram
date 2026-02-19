@@ -4,8 +4,9 @@ Provides context-aware quick action suggestions for common development tasks.
 """
 
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -24,7 +25,7 @@ class QuickAction:
     command: str
     icon: str
     category: str
-    context_required: List[str]  # Required context keys
+    context_required: list[str]  # Required context keys
     priority: int = 0  # Higher = more important
 
 
@@ -36,7 +37,7 @@ class QuickActionManager:
         self.actions = self._create_default_actions()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def _create_default_actions(self) -> Dict[str, QuickAction]:
+    def _create_default_actions(self) -> dict[str, QuickAction]:
         """Create default quick actions."""
         return {
             "test": QuickAction(
@@ -121,9 +122,7 @@ class QuickActionManager:
             ),
         }
 
-    async def get_suggestions(
-        self, session: SessionModel, limit: int = 6
-    ) -> List[QuickAction]:
+    async def get_suggestions(self, session: SessionModel, limit: int = 6) -> list[QuickAction]:
         """Get quick action suggestions based on session context.
 
         Args:
@@ -151,7 +150,7 @@ class QuickActionManager:
             self.logger.error(f"Error getting suggestions: {e}")
             return []
 
-    async def _analyze_context(self, session: SessionModel) -> Dict[str, Any]:
+    async def _analyze_context(self, session: SessionModel) -> dict[str, Any]:
         """Analyze session context to determine available actions.
 
         Args:
@@ -189,9 +188,7 @@ class QuickActionManager:
                     context["has_formatter"] = True
 
                 # Check for linter indicators
-                if any(
-                    word in content for word in ["flake8", "pylint", "eslint", "mypy"]
-                ):
+                if any(word in content for word in ["flake8", "pylint", "eslint", "mypy"]):
                     context["has_linter"] = True
 
         # File-based context analysis could be added here
@@ -199,9 +196,7 @@ class QuickActionManager:
 
         return context
 
-    def _is_action_available(
-        self, action: QuickAction, context: Dict[str, Any]
-    ) -> bool:
+    def _is_action_available(self, action: QuickAction, context: dict[str, Any]) -> bool:
         """Check if an action is available in the given context.
 
         Args:
@@ -217,9 +212,7 @@ class QuickActionManager:
                 return False
         return True
 
-    def create_inline_keyboard(
-        self, actions: List[QuickAction], columns: int = 2
-    ) -> InlineKeyboardMarkup:
+    def create_inline_keyboard(self, actions: list[QuickAction], columns: int = 2) -> InlineKeyboardMarkup:
         """Create inline keyboard for quick actions.
 
         Args:
@@ -246,9 +239,7 @@ class QuickActionManager:
 
         return InlineKeyboardMarkup(keyboard)
 
-    async def execute_action(
-        self, action_id: str, session: SessionModel, callback: Optional[Callable] = None
-    ) -> str:
+    async def execute_action(self, action_id: str, session: SessionModel, callback: Callable | None = None) -> str:
         """Execute a quick action.
 
         Args:
@@ -263,9 +254,7 @@ class QuickActionManager:
         if not action:
             raise ValueError(f"Unknown action: {action_id}")
 
-        self.logger.info(
-            f"Executing quick action: {action.name} for session {session.id}"
-        )
+        self.logger.info(f"Executing quick action: {action.name} for session {session.id}")
 
         # Return the command - actual execution is handled by the bot
         return action.command

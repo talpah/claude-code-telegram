@@ -12,9 +12,10 @@ import json
 import uuid
 from asyncio.subprocess import Process
 from collections import deque
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, AsyncIterator, Callable, Dict, List, Optional
+from typing import Any
 
 import structlog
 
@@ -39,8 +40,8 @@ class ClaudeResponse:
     duration_ms: int
     num_turns: int
     is_error: bool = False
-    error_type: Optional[str] = None
-    tools_used: List[Dict[str, Any]] = field(default_factory=list)
+    error_type: str | None = None
+    tools_used: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -49,39 +50,37 @@ class StreamUpdate:
 
     # assistant, user, system, result, tool_result, error, progress
     type: str
-    content: Optional[str] = None
-    tool_calls: Optional[List[Dict]] = None
-    metadata: Optional[Dict] = None
+    content: str | None = None
+    tool_calls: list[dict] | None = None
+    metadata: dict | None = None
 
     # Enhanced fields for better tracking
-    timestamp: Optional[str] = None
-    session_context: Optional[Dict] = None
-    progress: Optional[Dict] = None
-    error_info: Optional[Dict] = None
+    timestamp: str | None = None
+    session_context: dict | None = None
+    progress: dict | None = None
+    error_info: dict | None = None
 
     # Execution tracking
-    execution_id: Optional[str] = None
-    parent_message_id: Optional[str] = None
+    execution_id: str | None = None
+    parent_message_id: str | None = None
 
     def is_error(self) -> bool:
         """Check if this update represents an error."""
-        return self.type == "error" or (
-            self.metadata and self.metadata.get("is_error", False)
-        )
+        return self.type == "error" or (self.metadata and self.metadata.get("is_error", False))
 
-    def get_tool_names(self) -> List[str]:
+    def get_tool_names(self) -> list[str]:
         """Extract tool names from tool calls."""
         if not self.tool_calls:
             return []
         return [call.get("name") for call in self.tool_calls if call.get("name")]
 
-    def get_progress_percentage(self) -> Optional[int]:
+    def get_progress_percentage(self) -> int | None:
         """Get progress percentage if available."""
         if self.progress:
             return self.progress.get("percentage")
         return None
 
-    def get_error_message(self) -> Optional[str]:
+    def get_error_message(self) -> str | None:
         """Get error message if this is an error update."""
         if self.error_info:
             return self.error_info.get("message")
@@ -96,21 +95,19 @@ class ClaudeProcessManager:
     def __init__(self, config: Settings):
         """Initialize process manager with configuration."""
         self.config = config
-        self.active_processes: Dict[str, Process] = {}
+        self.active_processes: dict[str, Process] = {}
 
         # Memory optimization settings
         self.max_message_buffer = 1000  # Limit message history
-        self.streaming_buffer_size = (
-            65536  # 64KB streaming buffer for large JSON messages
-        )
+        self.streaming_buffer_size = 65536  # 64KB streaming buffer for large JSON messages
 
     async def execute_command(
         self,
         prompt: str,
         working_directory: Path,
-        session_id: Optional[str] = None,
+        session_id: str | None = None,
         continue_session: bool = False,
-        stream_callback: Optional[Callable[[StreamUpdate], None]] = None,
+        stream_callback: Callable[[StreamUpdate], None] | None = None,
     ) -> ClaudeResponse:
         """Execute Claude Code command."""
         # Build command
@@ -147,7 +144,7 @@ class ClaudeProcessManager:
 
             return result
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             # Kill process on timeout
             if process_id in self.active_processes:
                 self.active_processes[process_id].kill()
@@ -159,9 +156,7 @@ class ClaudeProcessManager:
                 timeout_seconds=self.config.claude_timeout_seconds,
             )
 
-            raise ClaudeTimeoutError(
-                f"Claude Code timed out after {self.config.claude_timeout_seconds}s"
-            )
+            raise ClaudeTimeoutError(f"Claude Code timed out after {self.config.claude_timeout_seconds}s")
 
         except Exception as e:
             logger.error(
@@ -176,9 +171,7 @@ class ClaudeProcessManager:
             if process_id in self.active_processes:
                 del self.active_processes[process_id]
 
-    def _build_command(
-        self, prompt: str, session_id: Optional[str], continue_session: bool
-    ) -> List[str]:
+    def _build_command(self, prompt: str, session_id: str | None, continue_session: bool) -> list[str]:
         """Build Claude Code command with arguments."""
         cmd = [self.config.claude_binary_path or "claude"]
 
@@ -207,10 +200,7 @@ class ClaudeProcessManager:
         cmd.extend(["--max-turns", str(self.config.claude_max_turns)])
 
         # Add allowed tools if configured
-        if (
-            hasattr(self.config, "claude_allowed_tools")
-            and self.config.claude_allowed_tools
-        ):
+        if hasattr(self.config, "claude_allowed_tools") and self.config.claude_allowed_tools:
             cmd.extend(["--allowedTools", ",".join(self.config.claude_allowed_tools)])
 
         # Add MCP server configuration if enabled
@@ -220,7 +210,7 @@ class ClaudeProcessManager:
         logger.debug("Built Claude Code command", command=cmd)
         return cmd
 
-    async def _start_process(self, cmd: List[str], cwd: Path) -> Process:
+    async def _start_process(self, cmd: list[str], cwd: Path) -> Process:
         """Start Claude Code subprocess."""
         return await asyncio.create_subprocess_exec(
             *cmd,
@@ -231,9 +221,7 @@ class ClaudeProcessManager:
             limit=1024 * 1024 * 512,  # 512MB
         )
 
-    async def _handle_process_output(
-        self, process: Process, stream_callback: Optional[Callable]
-    ) -> ClaudeResponse:
+    async def _handle_process_output(self, process: Process, stream_callback: Callable | None) -> ClaudeResponse:
         """Memory-optimized output handling with bounded buffers."""
         message_buffer = deque(maxlen=self.max_message_buffer)
         result = None
@@ -268,9 +256,7 @@ class ClaudeProcessManager:
 
             except json.JSONDecodeError as e:
                 parsing_errors.append(f"JSON decode error: {e}")
-                logger.warning(
-                    "Failed to parse JSON line", line=line[:200], error=str(e)
-                )
+                logger.warning("Failed to parse JSON line", line=line[:200], error=str(e))
                 continue
 
         # Enhanced error reporting
@@ -298,9 +284,7 @@ class ClaudeProcessManager:
                 # Extract reset time if available
                 import re
 
-                time_match = re.search(
-                    r"reset at (\d+[apm]+)", error_msg, re.IGNORECASE
-                )
+                time_match = re.search(r"reset at (\d+[apm]+)", error_msg, re.IGNORECASE)
                 timezone_match = re.search(r"\(([^)]+)\)", error_msg)
 
                 reset_time = time_match.group(1) if time_match else "later"
@@ -326,9 +310,7 @@ class ClaudeProcessManager:
                 raise ClaudeMCPError(f"MCP server error: {error_msg}")
 
             # Generic error handling for other cases
-            raise ClaudeProcessError(
-                f"Claude Code exited with code {return_code}: {error_msg}"
-            )
+            raise ClaudeProcessError(f"Claude Code exited with code {return_code}: {error_msg}")
 
         if not result:
             logger.error("No result message received from Claude Code")
@@ -364,7 +346,7 @@ class ClaudeProcessManager:
         if buffer:
             yield buffer.decode("utf-8", errors="replace").strip()
 
-    def _parse_stream_message(self, msg: Dict) -> Optional[StreamUpdate]:
+    def _parse_stream_message(self, msg: dict) -> StreamUpdate | None:
         """Enhanced parsing with comprehensive message type support."""
         msg_type = msg.get("type")
 
@@ -386,7 +368,7 @@ class ClaudeProcessManager:
         logger.debug("Unknown message type", msg_type=msg_type, msg=msg)
         return None
 
-    def _parse_assistant_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_assistant_message(self, msg: dict) -> StreamUpdate:
         """Parse assistant message with enhanced context."""
         message = msg.get("message", {})
         content_blocks = message.get("content", [])
@@ -416,7 +398,7 @@ class ClaudeProcessManager:
             execution_id=msg.get("id"),
         )
 
-    def _parse_tool_result_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_tool_result_message(self, msg: dict) -> StreamUpdate:
         """Parse tool execution results."""
         result = msg.get("result", {})
         content = result.get("content") if isinstance(result, dict) else str(result)
@@ -426,21 +408,15 @@ class ClaudeProcessManager:
             content=content,
             metadata={
                 "tool_use_id": msg.get("tool_use_id"),
-                "is_error": (
-                    result.get("is_error", False) if isinstance(result, dict) else False
-                ),
-                "execution_time_ms": (
-                    result.get("execution_time_ms")
-                    if isinstance(result, dict)
-                    else None
-                ),
+                "is_error": (result.get("is_error", False) if isinstance(result, dict) else False),
+                "execution_time_ms": (result.get("execution_time_ms") if isinstance(result, dict) else None),
             },
             timestamp=msg.get("timestamp"),
             session_context={"session_id": msg.get("session_id")},
             error_info={"message": content} if result.get("is_error", False) else None,
         )
 
-    def _parse_user_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_user_message(self, msg: dict) -> StreamUpdate:
         """Parse user message."""
         message = msg.get("message", {})
         content = message.get("content", "")
@@ -462,7 +438,7 @@ class ClaudeProcessManager:
             session_context={"session_id": msg.get("session_id")},
         )
 
-    def _parse_system_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_system_message(self, msg: dict) -> StreamUpdate:
         """Parse system messages including init and other subtypes."""
         subtype = msg.get("subtype")
 
@@ -490,7 +466,7 @@ class ClaudeProcessManager:
                 session_context={"session_id": msg.get("session_id")},
             )
 
-    def _parse_error_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_error_message(self, msg: dict) -> StreamUpdate:
         """Parse error messages."""
         error_message = msg.get("message", msg.get("error", str(msg)))
 
@@ -506,7 +482,7 @@ class ClaudeProcessManager:
             session_context={"session_id": msg.get("session_id")},
         )
 
-    def _parse_progress_message(self, msg: Dict) -> StreamUpdate:
+    def _parse_progress_message(self, msg: dict) -> StreamUpdate:
         """Parse progress update messages."""
         return StreamUpdate(
             type="progress",
@@ -521,12 +497,12 @@ class ClaudeProcessManager:
             session_context={"session_id": msg.get("session_id")},
         )
 
-    def _validate_message_structure(self, msg: Dict) -> bool:
+    def _validate_message_structure(self, msg: dict) -> bool:
         """Validate message has required structure."""
         required_fields = ["type"]
         return all(field in msg for field in required_fields)
 
-    def _parse_result(self, result: Dict, messages: List[Dict]) -> ClaudeResponse:
+    def _parse_result(self, result: dict, messages: list[dict]) -> ClaudeResponse:
         """Parse final result message."""
         # Extract tools used from messages
         tools_used = []
@@ -573,9 +549,7 @@ class ClaudeProcessManager:
 
     async def kill_all_processes(self) -> None:
         """Kill all active processes."""
-        logger.info(
-            "Killing all active Claude processes", count=len(self.active_processes)
-        )
+        logger.info("Killing all active Claude processes", count=len(self.active_processes))
 
         for process_id, process in self.active_processes.items():
             try:
@@ -583,9 +557,7 @@ class ClaudeProcessManager:
                 await process.wait()
                 logger.info("Killed Claude process", process_id=process_id)
             except Exception as e:
-                logger.warning(
-                    "Failed to kill process", process_id=process_id, error=str(e)
-                )
+                logger.warning("Failed to kill process", process_id=process_id, error=str(e))
 
         self.active_processes.clear()
 

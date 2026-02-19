@@ -12,24 +12,23 @@ help:
 	@echo "  run        - Run the bot"
 
 install:
-	poetry install --no-dev
+	uv sync --no-group dev
 
 dev:
-	poetry install
-	poetry run pre-commit install --install-hooks || echo "pre-commit not configured yet"
+	uv sync
+	uv run pre-commit install --install-hooks || echo "pre-commit not configured yet"
 
 test:
-	poetry run pytest
+	uv run pytest
 
 lint:
-	poetry run black --check src tests
-	poetry run isort --check-only src tests
-	poetry run flake8 src tests
-	poetry run mypy src
+	uv run ruff check src tests
+	uv run ruff format --check src tests
+	uv run ty check src
 
 format:
-	poetry run black src tests
-	poetry run isort src tests
+	uv run ruff format src tests
+	uv run ruff check --fix src tests
 
 clean:
 	find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
@@ -38,8 +37,8 @@ clean:
 	rm -rf .coverage htmlcov/ .pytest_cache/ dist/ build/
 
 run:
-	poetry run claude-telegram-bot
+	uv run claude-telegram-bot
 
 # For debugging
 run-debug:
-	poetry run claude-telegram-bot --debug
+	uv run claude-telegram-bot --debug

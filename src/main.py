@@ -6,7 +6,7 @@ import logging
 import signal
 import sys
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import structlog
 
@@ -63,11 +63,7 @@ def setup_logging(debug: bool = False) -> None:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             structlog.processors.UnicodeDecoder(),
-            (
-                structlog.processors.JSONRenderer()
-                if not debug
-                else structlog.dev.ConsoleRenderer()
-            ),
+            (structlog.processors.JSONRenderer() if not debug else structlog.dev.ConsoleRenderer()),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
@@ -83,9 +79,7 @@ def parse_args() -> argparse.Namespace:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    parser.add_argument(
-        "--version", action="version", version=f"Claude Code Telegram Bot {__version__}"
-    )
+    parser.add_argument("--version", action="version", version=f"Claude Code Telegram Bot {__version__}")
 
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
@@ -94,7 +88,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-async def create_application(config: Settings) -> Dict[str, Any]:
+async def create_application(config: Settings) -> dict[str, Any]:
     """Create and configure the application components."""
     logger = structlog.get_logger()
     logger.info("Creating application components")
@@ -119,10 +113,7 @@ async def create_application(config: Settings) -> Dict[str, Any]:
 
     # Fall back to allowing all users in development mode
     if not providers and config.development_mode:
-        logger.warning(
-            "No auth providers configured"
-            " - creating development-only allow-all provider"
-        )
+        logger.warning("No auth providers configured - creating development-only allow-all provider")
         providers.append(WhitelistAuthProvider([], allow_all_dev=True))
     elif not providers:
         raise ConfigurationError("No authentication providers configured")
@@ -141,9 +132,7 @@ async def create_application(config: Settings) -> Dict[str, Any]:
     # Create Claude integration components with persistent storage
     session_storage = SQLiteSessionStorage(storage.db_manager)
     session_manager = SessionManager(config, session_storage)
-    tool_monitor = ToolMonitor(
-        config, security_validator, agentic_mode=config.agentic_mode
-    )
+    tool_monitor = ToolMonitor(config, security_validator, agentic_mode=config.agentic_mode)
 
     # Create Claude manager based on configuration
     if config.use_sdk:
@@ -218,7 +207,7 @@ async def create_application(config: Settings) -> Dict[str, Any]:
     }
 
 
-async def run_application(app: Dict[str, Any]) -> None:
+async def run_application(app: dict[str, Any]) -> None:
     """Run the application with graceful shutdown handling."""
     logger = structlog.get_logger()
     bot: ClaudeCodeBot = app["bot"]
@@ -228,9 +217,9 @@ async def run_application(app: Dict[str, Any]) -> None:
     features: FeatureFlags = app["features"]
     event_bus: EventBus = app["event_bus"]
 
-    notification_service: Optional[NotificationService] = None
-    scheduler: Optional[JobScheduler] = None
-    project_threads_manager: Optional[ProjectThreadManager] = None
+    notification_service: NotificationService | None = None
+    scheduler: JobScheduler | None = None
+    project_threads_manager: ProjectThreadManager | None = None
 
     # Set up signal handlers for graceful shutdown
     shutdown_event = asyncio.Event()
@@ -250,9 +239,7 @@ async def run_application(app: Dict[str, Any]) -> None:
 
         if config.enable_project_threads:
             if not config.projects_config_path:
-                raise ConfigurationError(
-                    "Project thread mode enabled but required settings are missing"
-                )
+                raise ConfigurationError("Project thread mode enabled but required settings are missing")
             registry = load_project_registry(
                 config_path=config.projects_config_path,
                 approved_directory=config.approved_directory,
@@ -267,9 +254,7 @@ async def run_application(app: Dict[str, Any]) -> None:
 
             if config.project_threads_mode == "group":
                 if config.project_threads_chat_id is None:
-                    raise ConfigurationError(
-                        "Group thread mode requires PROJECT_THREADS_CHAT_ID"
-                    )
+                    raise ConfigurationError("Group thread mode requires PROJECT_THREADS_CHAT_ID")
                 sync_result = await project_threads_manager.sync_topics(
                     bot.app.bot,
                     chat_id=config.project_threads_chat_id,
@@ -311,9 +296,7 @@ async def run_application(app: Dict[str, Any]) -> None:
         if features.api_server_enabled:
             from src.api.server import run_api_server
 
-            api_task = asyncio.create_task(
-                run_api_server(event_bus, config, storage.db_manager)
-            )
+            api_task = asyncio.create_task(run_api_server(event_bus, config, storage.db_manager))
             tasks.append(api_task)
             logger.info("API server enabled", port=config.api_server_port)
 

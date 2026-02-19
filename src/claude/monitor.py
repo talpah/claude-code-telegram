@@ -10,7 +10,7 @@ Features:
 import shlex
 from collections import defaultdict
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any
 
 import structlog
 
@@ -20,7 +20,7 @@ from ..security.validators import SecurityValidator
 logger = structlog.get_logger()
 
 # Commands that modify the filesystem and should have paths checked
-_FS_MODIFYING_COMMANDS: Set[str] = {
+_FS_MODIFYING_COMMANDS: set[str] = {
     "mkdir",
     "touch",
     "cp",
@@ -33,7 +33,7 @@ _FS_MODIFYING_COMMANDS: Set[str] = {
 }
 
 # Commands that are read-only or don't take filesystem paths
-_READ_ONLY_COMMANDS: Set[str] = {
+_READ_ONLY_COMMANDS: set[str] = {
     "cat",
     "ls",
     "head",
@@ -63,14 +63,14 @@ _READ_ONLY_COMMANDS: Set[str] = {
 }
 
 # Actions / expressions that make ``find`` a filesystem-modifying command
-_FIND_MUTATING_ACTIONS: Set[str] = {"-delete", "-exec", "-execdir", "-ok", "-okdir"}
+_FIND_MUTATING_ACTIONS: set[str] = {"-delete", "-exec", "-execdir", "-ok", "-okdir"}
 
 
 def check_bash_directory_boundary(
     command: str,
     working_directory: Path,
     approved_directory: Path,
-) -> Tuple[bool, Optional[str]]:
+) -> tuple[bool, str | None]:
     """Check if a bash command's absolute paths stay within the approved directory.
 
     Returns (True, None) if the command is safe, or (False, error_message) if it
@@ -136,24 +136,24 @@ class ToolMonitor:
     def __init__(
         self,
         config: Settings,
-        security_validator: Optional[SecurityValidator] = None,
+        security_validator: SecurityValidator | None = None,
         agentic_mode: bool = False,
     ):
         """Initialize tool monitor."""
         self.config = config
         self.security_validator = security_validator
         self.agentic_mode = agentic_mode
-        self.tool_usage: Dict[str, int] = defaultdict(int)
-        self.security_violations: List[Dict[str, Any]] = []
+        self.tool_usage: dict[str, int] = defaultdict(int)
+        self.security_violations: list[dict[str, Any]] = []
         self.disable_tool_validation = getattr(config, "disable_tool_validation", False)
 
     async def validate_tool_call(
         self,
         tool_name: str,
-        tool_input: Dict[str, Any],
+        tool_input: dict[str, Any],
         working_directory: Path,
         user_id: int,
-    ) -> Tuple[bool, Optional[str]]:
+    ) -> tuple[bool, str | None]:
         """Validate tool call before execution."""
         logger.debug(
             "Validating tool call",
@@ -220,9 +220,7 @@ class ToolMonitor:
 
             # Validate path security
             if self.security_validator:
-                valid, resolved_path, error = self.security_validator.validate_path(
-                    file_path, working_directory
-                )
+                valid, resolved_path, error = self.security_validator.validate_path(file_path, working_directory)
 
                 if not valid:
                     violation = {
@@ -275,9 +273,7 @@ class ToolMonitor:
                     return False, f"Dangerous command pattern detected: {pattern}"
 
             # Check directory boundary for filesystem-modifying commands
-            valid, error = check_bash_directory_boundary(
-                command, working_directory, self.config.approved_directory
-            )
+            valid, error = check_bash_directory_boundary(command, working_directory, self.config.approved_directory)
             if not valid:
                 violation = {
                     "type": "directory_boundary_violation",
@@ -297,7 +293,7 @@ class ToolMonitor:
         logger.debug("Tool call validated successfully", tool_name=tool_name)
         return True, None
 
-    def get_tool_stats(self) -> Dict[str, Any]:
+    def get_tool_stats(self) -> dict[str, Any]:
         """Get tool usage statistics."""
         return {
             "total_calls": sum(self.tool_usage.values()),
@@ -306,7 +302,7 @@ class ToolMonitor:
             "security_violations": len(self.security_violations),
         }
 
-    def get_security_violations(self) -> List[Dict[str, Any]]:
+    def get_security_violations(self) -> list[dict[str, Any]]:
         """Get security violations."""
         return self.security_violations.copy()
 
@@ -316,11 +312,9 @@ class ToolMonitor:
         self.security_violations.clear()
         logger.info("Tool monitor statistics reset")
 
-    def get_user_tool_usage(self, user_id: int) -> Dict[str, Any]:
+    def get_user_tool_usage(self, user_id: int) -> dict[str, Any]:
         """Get tool usage for specific user."""
-        user_violations = [
-            v for v in self.security_violations if v.get("user_id") == user_id
-        ]
+        user_violations = [v for v in self.security_violations if v.get("user_id") == user_id]
 
         return {
             "user_id": user_id,
@@ -331,18 +325,12 @@ class ToolMonitor:
     def is_tool_allowed(self, tool_name: str) -> bool:
         """Check if tool is allowed without validation."""
         # Check allowed list
-        if (
-            hasattr(self.config, "claude_allowed_tools")
-            and self.config.claude_allowed_tools
-        ):
+        if hasattr(self.config, "claude_allowed_tools") and self.config.claude_allowed_tools:
             if tool_name not in self.config.claude_allowed_tools:
                 return False
 
         # Check disallowed list
-        if (
-            hasattr(self.config, "claude_disallowed_tools")
-            and self.config.claude_disallowed_tools
-        ):
+        if hasattr(self.config, "claude_disallowed_tools") and self.config.claude_disallowed_tools:
             if tool_name in self.config.claude_disallowed_tools:
                 return False
 

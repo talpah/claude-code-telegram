@@ -71,10 +71,7 @@ class TestResponseFormatter:
         assert len(messages) == 1
         assert "<pre>" in messages[0].text
         assert "<code" in messages[0].text
-        assert (
-            "print(&#x27;hello&#x27;)" in messages[0].text
-            or "print('hello')" in messages[0].text
-        )
+        assert "print(&#x27;hello&#x27;)" in messages[0].text or "print('hello')" in messages[0].text
 
     def test_split_long_message(self, formatter):
         """Test splitting long messages."""

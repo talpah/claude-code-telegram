@@ -7,7 +7,6 @@ Each provider has its own signing mechanism:
 
 import hashlib
 import hmac
-from typing import Optional
 
 import structlog
 
@@ -16,7 +15,7 @@ logger = structlog.get_logger()
 
 def verify_github_signature(
     payload_body: bytes,
-    signature_header: Optional[str],
+    signature_header: str | None,
     secret: str,
 ) -> bool:
     """Verify GitHub webhook HMAC-SHA256 signature.
@@ -44,7 +43,7 @@ def verify_github_signature(
 
 
 def verify_shared_secret(
-    authorization_header: Optional[str],
+    authorization_header: str | None,
     secret: str,
 ) -> bool:
     """Verify a simple shared secret in the Authorization header.

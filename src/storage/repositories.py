@@ -8,7 +8,6 @@ Features:
 
 import json
 from datetime import UTC, datetime
-from typing import Dict, List, Optional
 
 import structlog
 
@@ -33,12 +32,10 @@ class UserRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def get_user(self, user_id: int) -> Optional[UserModel]:
+    async def get_user(self, user_id: int) -> UserModel | None:
         """Get user by ID."""
         async with self.db.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM users WHERE user_id = ?", (user_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
             row = await cursor.fetchone()
             return UserModel.from_row(row) if row else None
 
@@ -62,9 +59,7 @@ class UserRepository:
             )
             await conn.commit()
 
-            logger.info(
-                "Created user", user_id=user.user_id, username=user.telegram_username
-            )
+            logger.info("Created user", user_id=user.user_id, username=user.telegram_username)
             return user
 
     async def update_user(self, user: UserModel):
@@ -88,26 +83,22 @@ class UserRepository:
             )
             await conn.commit()
 
-    async def get_allowed_users(self) -> List[int]:
+    async def get_allowed_users(self) -> list[int]:
         """Get list of allowed user IDs."""
         async with self.db.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT user_id FROM users WHERE is_allowed = TRUE"
-            )
+            cursor = await conn.execute("SELECT user_id FROM users WHERE is_allowed = TRUE")
             rows = await cursor.fetchall()
             return [row[0] for row in rows]
 
     async def set_user_allowed(self, user_id: int, allowed: bool):
         """Set user allowed status."""
         async with self.db.get_connection() as conn:
-            await conn.execute(
-                "UPDATE users SET is_allowed = ? WHERE user_id = ?", (allowed, user_id)
-            )
+            await conn.execute("UPDATE users SET is_allowed = ? WHERE user_id = ?", (allowed, user_id))
             await conn.commit()
 
             logger.info("Updated user permissions", user_id=user_id, allowed=allowed)
 
-    async def get_all_users(self) -> List[UserModel]:
+    async def get_all_users(self) -> list[UserModel]:
         """Get all users."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute("SELECT * FROM users ORDER BY first_seen DESC")
@@ -122,12 +113,10 @@ class SessionRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def get_session(self, session_id: str) -> Optional[SessionModel]:
+    async def get_session(self, session_id: str) -> SessionModel | None:
         """Get session by ID."""
         async with self.db.get_connection() as conn:
-            cursor = await conn.execute(
-                "SELECT * FROM sessions WHERE session_id = ?", (session_id,)
-            )
+            cursor = await conn.execute("SELECT * FROM sessions WHERE session_id = ?", (session_id,))
             row = await cursor.fetchone()
             return SessionModel.from_row(row) if row else None
 
@@ -178,9 +167,7 @@ class SessionRepository:
             )
             await conn.commit()
 
-    async def get_user_sessions(
-        self, user_id: int, active_only: bool = True
-    ) -> List[SessionModel]:
+    async def get_user_sessions(self, user_id: int, active_only: bool = True) -> list[SessionModel]:
         """Get sessions for user."""
         async with self.db.get_connection() as conn:
             query = "SELECT * FROM sessions WHERE user_id = ?"
@@ -213,7 +200,7 @@ class SessionRepository:
             logger.info("Cleaned up old sessions", count=affected, days=days)
             return affected
 
-    async def get_sessions_by_project(self, project_path: str) -> List[SessionModel]:
+    async def get_sessions_by_project(self, project_path: str) -> list[SessionModel]:
         """Get sessions for a specific project."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -235,9 +222,7 @@ class ProjectThreadRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def get_by_chat_thread(
-        self, chat_id: int, message_thread_id: int
-    ) -> Optional[ProjectThreadModel]:
+    async def get_by_chat_thread(self, chat_id: int, message_thread_id: int) -> ProjectThreadModel | None:
         """Find active mapping by chat+thread."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -250,9 +235,7 @@ class ProjectThreadRepository:
             row = await cursor.fetchone()
             return ProjectThreadModel.from_row(row) if row else None
 
-    async def get_by_chat_project(
-        self, chat_id: int, project_slug: str
-    ) -> Optional[ProjectThreadModel]:
+    async def get_by_chat_project(self, chat_id: int, project_slug: str) -> ProjectThreadModel | None:
         """Find mapping by chat+project slug."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -290,16 +273,12 @@ class ProjectThreadRepository:
             )
             await conn.commit()
 
-        mapping = await self.get_by_chat_project(
-            chat_id=chat_id, project_slug=project_slug
-        )
+        mapping = await self.get_by_chat_project(chat_id=chat_id, project_slug=project_slug)
         if not mapping:
             raise RuntimeError("Failed to upsert project thread mapping")
         return mapping
 
-    async def deactivate_missing_projects(
-        self, chat_id: int, active_project_slugs: List[str]
-    ) -> int:
+    async def deactivate_missing_projects(self, chat_id: int, active_project_slugs: list[str]) -> int:
         """Deactivate mappings for projects no longer enabled/present."""
         async with self.db.get_connection() as conn:
             if active_project_slugs:
@@ -326,8 +305,8 @@ class ProjectThreadRepository:
             return cursor.rowcount
 
     async def list_stale_active_mappings(
-        self, chat_id: int, active_project_slugs: List[str]
-    ) -> List[ProjectThreadModel]:
+        self, chat_id: int, active_project_slugs: list[str]
+    ) -> list[ProjectThreadModel]:
         """List active mappings that are no longer enabled/present."""
         async with self.db.get_connection() as conn:
             if active_project_slugs:
@@ -367,9 +346,7 @@ class ProjectThreadRepository:
             await conn.commit()
             return cursor.rowcount
 
-    async def list_by_chat(
-        self, chat_id: int, active_only: bool = True
-    ) -> List[ProjectThreadModel]:
+    async def list_by_chat(self, chat_id: int, active_only: bool = True) -> list[ProjectThreadModel]:
         """List mappings for a chat."""
         async with self.db.get_connection() as conn:
             query = "SELECT * FROM project_threads WHERE chat_id = ?"
@@ -413,9 +390,7 @@ class MessageRepository:
             await conn.commit()
             return cursor.lastrowid
 
-    async def get_session_messages(
-        self, session_id: str, limit: int = 50
-    ) -> List[MessageModel]:
+    async def get_session_messages(self, session_id: str, limit: int = 50) -> list[MessageModel]:
         """Get messages for session."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -430,9 +405,7 @@ class MessageRepository:
             rows = await cursor.fetchall()
             return [MessageModel.from_row(row) for row in rows]
 
-    async def get_user_messages(
-        self, user_id: int, limit: int = 100
-    ) -> List[MessageModel]:
+    async def get_user_messages(self, user_id: int, limit: int = 100) -> list[MessageModel]:
         """Get messages for user."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -447,7 +420,7 @@ class MessageRepository:
             rows = await cursor.fetchall()
             return [MessageModel.from_row(row) for row in rows]
 
-    async def get_recent_messages(self, hours: int = 24) -> List[MessageModel]:
+    async def get_recent_messages(self, hours: int = 24) -> list[MessageModel]:
         """Get recent messages."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -472,9 +445,7 @@ class ToolUsageRepository:
     async def save_tool_usage(self, tool_usage: ToolUsageModel) -> int:
         """Save tool usage and return ID."""
         async with self.db.get_connection() as conn:
-            tool_input_json = (
-                json.dumps(tool_usage.tool_input) if tool_usage.tool_input else None
-            )
+            tool_input_json = json.dumps(tool_usage.tool_input) if tool_usage.tool_input else None
 
             cursor = await conn.execute(
                 """
@@ -496,7 +467,7 @@ class ToolUsageRepository:
             await conn.commit()
             return cursor.lastrowid
 
-    async def get_session_tool_usage(self, session_id: str) -> List[ToolUsageModel]:
+    async def get_session_tool_usage(self, session_id: str) -> list[ToolUsageModel]:
         """Get tool usage for session."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -510,7 +481,7 @@ class ToolUsageRepository:
             rows = await cursor.fetchall()
             return [ToolUsageModel.from_row(row) for row in rows]
 
-    async def get_user_tool_usage(self, user_id: int) -> List[ToolUsageModel]:
+    async def get_user_tool_usage(self, user_id: int) -> list[ToolUsageModel]:
         """Get tool usage for user."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -525,7 +496,7 @@ class ToolUsageRepository:
             rows = await cursor.fetchall()
             return [ToolUsageModel.from_row(row) for row in rows]
 
-    async def get_tool_stats(self) -> List[Dict[str, any]]:
+    async def get_tool_stats(self) -> list[dict[str, any]]:
         """Get tool usage statistics."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -555,9 +526,7 @@ class AuditLogRepository:
     async def log_event(self, audit_log: AuditLogModel) -> int:
         """Log audit event and return ID."""
         async with self.db.get_connection() as conn:
-            event_data_json = (
-                json.dumps(audit_log.event_data) if audit_log.event_data else None
-            )
+            event_data_json = json.dumps(audit_log.event_data) if audit_log.event_data else None
 
             cursor = await conn.execute(
                 """
@@ -577,9 +546,7 @@ class AuditLogRepository:
             await conn.commit()
             return cursor.lastrowid
 
-    async def get_user_audit_log(
-        self, user_id: int, limit: int = 100
-    ) -> List[AuditLogModel]:
+    async def get_user_audit_log(self, user_id: int, limit: int = 100) -> list[AuditLogModel]:
         """Get audit log for user."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -594,7 +561,7 @@ class AuditLogRepository:
             rows = await cursor.fetchall()
             return [AuditLogModel.from_row(row) for row in rows]
 
-    async def get_recent_audit_log(self, hours: int = 24) -> List[AuditLogModel]:
+    async def get_recent_audit_log(self, hours: int = 24) -> list[AuditLogModel]:
         """Get recent audit log entries."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -635,9 +602,7 @@ class CostTrackingRepository:
             )
             await conn.commit()
 
-    async def get_user_daily_costs(
-        self, user_id: int, days: int = 30
-    ) -> List[CostTrackingModel]:
+    async def get_user_daily_costs(self, user_id: int, days: int = 30) -> list[CostTrackingModel]:
         """Get user's daily costs."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -651,7 +616,7 @@ class CostTrackingRepository:
             rows = await cursor.fetchall()
             return [CostTrackingModel.from_row(row) for row in rows]
 
-    async def get_total_costs(self, days: int = 30) -> List[Dict[str, any]]:
+    async def get_total_costs(self, days: int = 30) -> list[dict[str, any]]:
         """Get total costs by day."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -679,7 +644,7 @@ class AnalyticsRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def get_user_stats(self, user_id: int) -> Dict[str, any]:
+    async def get_user_stats(self, user_id: int) -> dict[str, any]:
         """Get user statistics."""
         async with self.db.get_connection() as conn:
             # User summary
@@ -742,7 +707,7 @@ class AnalyticsRepository:
                 "top_tools": top_tools,
             }
 
-    async def get_system_stats(self) -> Dict[str, any]:
+    async def get_system_stats(self) -> dict[str, any]:
         """Get system-wide statistics."""
         async with self.db.get_connection() as conn:
             # Overall stats

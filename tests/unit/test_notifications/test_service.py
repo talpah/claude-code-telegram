@@ -35,17 +35,13 @@ def service(event_bus: EventBus, mock_bot: AsyncMock) -> NotificationService:
 class TestNotificationService:
     """Tests for NotificationService."""
 
-    async def test_handle_response_queues_event(
-        self, service: NotificationService
-    ) -> None:
+    async def test_handle_response_queues_event(self, service: NotificationService) -> None:
         """Events are queued for delivery."""
         event = AgentResponseEvent(chat_id=100, text="hello")
         await service.handle_response(event)
         assert service._send_queue.qsize() == 1
 
-    async def test_resolve_chat_ids_specific(
-        self, service: NotificationService
-    ) -> None:
+    async def test_resolve_chat_ids_specific(self, service: NotificationService) -> None:
         """Specific chat_id takes precedence over defaults."""
         event = AgentResponseEvent(chat_id=999, text="test")
         ids = service._resolve_chat_ids(event)
@@ -80,9 +76,7 @@ class TestNotificationService:
         assert len(chunks[0]) == 4096
         assert len(chunks[1]) == 904
 
-    async def test_send_to_telegram(
-        self, service: NotificationService, mock_bot: AsyncMock
-    ) -> None:
+    async def test_send_to_telegram(self, service: NotificationService, mock_bot: AsyncMock) -> None:
         """Messages are sent via the Telegram bot."""
         event = AgentResponseEvent(chat_id=123, text="hello world")
         await service._rate_limited_send(123, event)
@@ -92,9 +86,7 @@ class TestNotificationService:
         assert call_kwargs["chat_id"] == 123
         assert call_kwargs["text"] == "hello world"
 
-    async def test_ignores_non_response_events(
-        self, service: NotificationService
-    ) -> None:
+    async def test_ignores_non_response_events(self, service: NotificationService) -> None:
         """Non-AgentResponseEvent events are ignored."""
         from src.events.bus import Event
 

@@ -65,9 +65,7 @@ class SessionExporter:
             raise ValueError(f"Session {session_id} not found")
 
         # Get session messages
-        messages = await self.storage.get_session_messages(
-            session_id, limit=MAX_SESSION_LENGTH
-        )
+        messages = await self.storage.get_session_messages(session_id, limit=MAX_SESSION_LENGTH)
 
         # Export based on format
         if format == ExportFormat.MARKDOWN:
@@ -111,7 +109,7 @@ class SessionExporter:
         lines = []
 
         # Header
-        lines.append(f"# Claude Code Session Export")
+        lines.append("# Claude Code Session Export")
         lines.append(f"\n**Session ID:** `{session['id']}`")
         lines.append(f"**Created:** {session['created_at']}")
         if session.get("updated_at"):
@@ -146,11 +144,7 @@ class SessionExporter:
                 "id": session["id"],
                 "user_id": session["user_id"],
                 "created_at": session["created_at"].isoformat(),
-                "updated_at": (
-                    session.get("updated_at", "").isoformat()
-                    if session.get("updated_at")
-                    else None
-                ),
+                "updated_at": (session.get("updated_at", "").isoformat() if session.get("updated_at") else None),
                 "message_count": len(messages),
             },
             "messages": [
@@ -186,7 +180,7 @@ class SessionExporter:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Code Session - {session['id'][:8]}</title>
+    <title>Claude Code Session - {session["id"][:8]}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
