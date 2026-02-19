@@ -1,7 +1,17 @@
 # Claude Code Telegram Bot
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+
+> **Fork of [RichardAtCT/claude-code-telegram](https://github.com/RichardAtCT/claude-code-telegram)** with the following changes:
+> - Migrated from Poetry to **uv**
+> - Replaced black/isort/flake8/mypy with **ruff** + **ty**
+> - Added **nox** for automated session-based testing and linting
+> - Merged improvements from [gitwithuli/claude-code-telegram](https://github.com/gitwithuli/claude-code-telegram/tree/improvements): real image detection, cost tracking fix, SQLite-backed audit/token storage
+> - Dropped Python 3.10 (requires 3.11+ due to `datetime.UTC`)
+> - Modernized type annotations throughout (`X | None` over `Optional[X]`, etc.)
+
+---
 
 A Telegram bot that gives you remote access to [Claude Code](https://claude.ai/code). Chat naturally with Claude about your projects from anywhere -- no terminal commands needed.
 
@@ -33,15 +43,15 @@ Bot: Running pytest...
 
 ### 1. Prerequisites
 
-- **Python 3.10+** -- [Download here](https://www.python.org/downloads/)
-- **Poetry** -- Modern Python dependency management
+- **Python 3.11+** -- [Download here](https://www.python.org/downloads/)
+- **uv** -- `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Claude Code CLI** -- [Install from here](https://claude.ai/code)
 - **Telegram Bot Token** -- Get one from [@BotFather](https://t.me/botfather)
 
 ### 2. Install
 
 ```bash
-git clone https://github.com/RichardAtCT/claude-code-telegram.git
+git clone https://github.com/talpah/claude-code-telegram.git
 cd claude-code-telegram
 make dev
 ```
@@ -96,7 +106,7 @@ Bot: Working... (8s)
      📖 Read: http_client.py
      💬 I'll add a retry decorator with exponential backoff
      ✏️ Edit: http_client.py
-     💻 Bash: poetry run pytest tests/ -v
+     💻 Bash: uv run pytest tests/ -v
 Bot: [Claude shows the changes and test results]
 
 You: /verbose 0
@@ -139,7 +149,7 @@ Use `/repo` to list cloned repos in your workspace, or `/repo <name>` to switch 
 
 Set `AGENTIC_MODE=false` to enable the full 13-command terminal-like interface with directory navigation, inline keyboards, quick actions, git integration, and session export.
 
-**Commands:** `/start`, `/help`, `/new`, `/continue`, `/end`, `/status`, `/cd`, `/ls`, `/pwd`, `/projects`, `/export`, `/actions`, `/git`  
+**Commands:** `/start`, `/help`, `/new`, `/continue`, `/end`, `/status`, `/cd`, `/ls`, `/pwd`, `/projects`, `/export`, `/actions`, `/git`
 If `ENABLE_PROJECT_THREADS=true`: `/sync_threads`
 
 ```
@@ -171,22 +181,21 @@ Enable with `ENABLE_API_SERVER=true` and `ENABLE_SCHEDULER=true`. See [docs/setu
 - Classic terminal-like mode with 13 commands and inline keyboards
 - Full Claude Code integration with SDK (primary) and CLI (fallback)
 - Automatic session persistence per user/project directory
-- Multi-layer authentication (whitelist + optional token-based)
-- Rate limiting with token bucket algorithm
-- Directory sandboxing with path traversal prevention
+- Multi-layer authentication (whitelist + optional SQLite-backed token auth)
+- Rate limiting with token bucket algorithm and actual cost tracking
+- Directory sandboxing with path traversal prevention and bash boundary enforcement
 - File upload handling with archive extraction
-- Image/screenshot upload with analysis
+- Image/screenshot upload with format-aware type detection (PNG/JPEG/GIF/WebP)
 - Git integration with safe repository operations
 - Quick actions system with context-aware buttons
 - Session export in Markdown, HTML, and JSON formats
-- SQLite persistence with migrations
+- SQLite persistence for sessions, audit logs, and auth tokens (survives restarts)
 - Usage and cost tracking
 - Audit logging and security event tracking
 - Event bus for decoupled message routing
 - Webhook API server (GitHub HMAC-SHA256, generic Bearer token auth)
 - Job scheduler with cron expressions and persistent storage
 - Notification service with per-chat rate limiting
-
 - Tunable verbose output showing Claude's tool usage and reasoning in real-time
 - Persistent typing indicator so users always know the bot is working
 
@@ -296,22 +305,27 @@ Message [@userinfobot](https://t.me/userinfobot) on Telegram -- it will reply wi
 This bot implements defense-in-depth security:
 
 - **Access Control** -- Whitelist-based user authentication
-- **Directory Isolation** -- Sandboxing to approved directories
+- **Directory Isolation** -- Sandboxing to approved directories with bash boundary enforcement
 - **Rate Limiting** -- Request and cost-based limits
 - **Input Validation** -- Injection and path traversal protection
 - **Webhook Authentication** -- GitHub HMAC-SHA256 and Bearer token verification
-- **Audit Logging** -- Complete tracking of all user actions
+- **Audit Logging** -- Complete tracking of all user actions (SQLite-backed, persistent)
 
 See [SECURITY.md](SECURITY.md) for details.
 
 ## Development
 
 ```bash
-make dev           # Install all dependencies
+make dev           # Install all dependencies (uv)
 make test          # Run tests with coverage
-make lint          # Black + isort + flake8 + mypy
-make format        # Auto-format code
+make lint          # ruff check + ruff format --check + ty check
+make format        # Auto-format with ruff
 make run-debug     # Run with debug logging
+
+# Or use nox for isolated session testing:
+uv run nox              # lint + typecheck + tests (3.11, 3.12)
+uv run nox -s lint      # lint only
+uv run nox -s tests-3.12
 ```
 
 ### Contributing
@@ -321,7 +335,7 @@ make run-debug     # Run with debug logging
 3. Make changes with tests: `make test && make lint`
 4. Submit a Pull Request
 
-**Code standards:** Python 3.10+, Black formatting (88 chars), type hints required, pytest with >85% coverage.
+**Code standards:** Python 3.11+, ruff formatting (120 chars), type hints required, pytest with >85% coverage.
 
 ## License
 
@@ -331,3 +345,5 @@ MIT License -- see [LICENSE](LICENSE).
 
 - [Claude](https://claude.ai) by Anthropic
 - [python-telegram-bot](https://github.com/python-telegram-bot/python-telegram-bot)
+- Original project: [RichardAtCT/claude-code-telegram](https://github.com/RichardAtCT/claude-code-telegram)
+- Improvements: [gitwithuli/claude-code-telegram](https://github.com/gitwithuli/claude-code-telegram)
