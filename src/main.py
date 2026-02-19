@@ -12,6 +12,7 @@ import structlog
 
 from src import __version__
 from src.bot.core import ClaudeCodeBot
+from src.bot.features.voice_handler import VoiceHandler
 from src.claude import (
     ClaudeIntegration,
     ClaudeProcessManager,
@@ -20,11 +21,13 @@ from src.claude import (
 )
 from src.claude.sdk_integration import ClaudeSDKManager
 from src.config.features import FeatureFlags
+from src.config.profile import ProfileManager
 from src.config.settings import Settings
 from src.events.bus import EventBus
 from src.events.handlers import AgentHandler
 from src.events.middleware import EventSecurityMiddleware
 from src.exceptions import ConfigurationError
+from src.memory.manager import MemoryManager
 from src.notifications.service import NotificationService
 from src.projects import ProjectThreadManager, load_project_registry
 from src.scheduler.scheduler import JobScheduler
@@ -146,6 +149,21 @@ async def create_application(config: Settings) -> dict[str, Any]:
         process_manager = ClaudeProcessManager(config)
         sdk_manager = None
 
+    # Profile manager (optional — only active when USER_PROFILE_PATH is set)
+    profile_manager = ProfileManager(config.user_profile_path) if config.user_profile_path else None
+
+    # Memory manager (optional — only active when ENABLE_MEMORY=true)
+    memory_manager: MemoryManager | None = None
+    if config.enable_memory:
+        memory_manager = MemoryManager(
+            db_manager=storage.db_manager,
+            enable_embeddings=config.enable_memory_embeddings,
+        )
+        logger.info("Semantic memory enabled", embeddings=config.enable_memory_embeddings)
+
+    # Voice handler (optional — only active when VOICE_PROVIDER is set)
+    voice_handler = VoiceHandler(config) if config.voice_provider else None
+
     # Create main Claude integration facade
     claude_integration = ClaudeIntegration(
         config=config,
@@ -153,6 +171,8 @@ async def create_application(config: Settings) -> dict[str, Any]:
         sdk_manager=sdk_manager,
         session_manager=session_manager,
         tool_monitor=tool_monitor,
+        profile_manager=profile_manager,
+        memory_manager=memory_manager,
     )
 
     # --- Event bus and agentic platform components ---
@@ -186,6 +206,8 @@ async def create_application(config: Settings) -> dict[str, Any]:
         "event_bus": event_bus,
         "project_registry": None,
         "project_threads_manager": None,
+        "memory_manager": memory_manager,
+        "voice_handler": voice_handler,
     }
 
     bot = ClaudeCodeBot(config, dependencies)
@@ -311,6 +333,20 @@ async def run_application(app: dict[str, Any]) -> None:
             )
             await scheduler.start()
             logger.info("Job scheduler enabled")
+
+            # Proactive check-ins (if enabled — require scheduler)
+            if config.enable_checkins:
+                from src.scheduler.checkin import CheckInService
+
+                checkin_service = CheckInService(
+                    claude_integration=claude_integration,
+                    memory_manager=bot.deps.get("memory_manager"),
+                    event_bus=event_bus,
+                    db_manager=storage.db_manager,
+                    settings=config,
+                )
+                await checkin_service.start(scheduler._scheduler)
+                logger.info("Proactive check-ins enabled")
 
         # Shutdown task
         shutdown_task = asyncio.create_task(shutdown_event.wait())

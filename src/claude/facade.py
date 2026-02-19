@@ -4,8 +4,9 @@ Provides simple interface for bot handlers.
 """
 
 from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
@@ -15,6 +16,10 @@ from .integration import ClaudeProcessManager, ClaudeResponse, StreamUpdate
 from .monitor import ToolMonitor
 from .sdk_integration import ClaudeSDKManager
 from .session import ClaudeSession, SessionManager
+
+if TYPE_CHECKING:
+    from ..config.profile import ProfileManager
+    from ..memory.manager import MemoryManager
 
 logger = structlog.get_logger()
 
@@ -29,6 +34,8 @@ class ClaudeIntegration:
         sdk_manager: ClaudeSDKManager | None = None,
         session_manager: SessionManager | None = None,
         tool_monitor: ToolMonitor | None = None,
+        profile_manager: "ProfileManager | None" = None,
+        memory_manager: "MemoryManager | None" = None,
     ):
         """Initialize Claude integration facade."""
         self.config = config
@@ -45,6 +52,8 @@ class ClaudeIntegration:
 
         self.session_manager = session_manager
         self.tool_monitor = tool_monitor
+        self.profile_manager = profile_manager
+        self.memory_manager = memory_manager
         self._sdk_failed_count = 0  # Track SDK failures for adaptive fallback
 
     async def run_command(
@@ -145,6 +154,9 @@ class ClaudeIntegration:
                 except Exception as e:
                     logger.warning("Stream callback failed", error=str(e))
 
+        # Build enriched prompt (profile + memory + time context)
+        enriched_prompt = await self._build_enriched_prompt(user_id=user_id, prompt=prompt)
+
         # Execute command
         try:
             # Continue session if we have a real (non-temporary) session ID
@@ -157,7 +169,7 @@ class ClaudeIntegration:
 
             try:
                 response = await self._execute_with_fallback(
-                    prompt=prompt,
+                    prompt=enriched_prompt,
                     working_directory=working_directory,
                     session_id=claude_session_id,
                     continue_session=should_continue,
@@ -178,7 +190,7 @@ class ClaudeIntegration:
                     # Create a fresh session and retry
                     session = await session_manager.get_or_create_session(user_id, working_directory)
                     response = await self._execute_with_fallback(
-                        prompt=prompt,
+                        prompt=enriched_prompt,
                         working_directory=working_directory,
                         session_id=None,
                         continue_session=False,
@@ -339,6 +351,53 @@ class ClaudeIntegration:
                 continue_session=continue_session,
                 stream_callback=stream_callback,
             )
+
+    async def _build_enriched_prompt(self, user_id: int, prompt: str) -> str:
+        """Prepend profile, memory, and time context to the user's prompt."""
+        sections: list[str] = []
+
+        # User profile
+        if self.profile_manager:
+            profile_context = self.profile_manager.get_profile_context()
+            if profile_context:
+                sections.append(profile_context)
+
+        # Memory context
+        if self.memory_manager:
+            memory_context = await self.memory_manager.build_memory_context(user_id, query=prompt)
+            if memory_context:
+                sections.append(memory_context)
+
+        # Current time
+        now = datetime.now(UTC)
+        tz = getattr(self.config, "user_timezone", "UTC")
+        sections.append(f"## Current Context\nTime: {now.strftime('%Y-%m-%d %H:%M')} UTC (Timezone: {tz})")
+
+        # Memory tag instructions
+        if self.memory_manager:
+            sections.append(
+                "## Memory Instructions\n"
+                "When the user shares something worth remembering, include [REMEMBER: fact] in your response.\n"
+                "To track a user goal, include [GOAL: objective].\n"
+                "When a goal is completed, include [DONE: goal description].\n"
+                "These tags will be extracted automatically — the user won't see them."
+            )
+
+        if not sections:
+            return prompt
+
+        return "\n\n".join(sections) + "\n\n---\n\n" + prompt
+
+    async def quick_query(self, prompt: str, working_directory: Path) -> str:
+        """Execute a one-shot query without session management. Returns response content."""
+        response = await self._execute_with_fallback(
+            prompt=prompt,
+            working_directory=working_directory,
+            session_id=None,
+            continue_session=False,
+            stream_callback=None,
+        )
+        return response.content
 
     async def _find_resumable_session(
         self,

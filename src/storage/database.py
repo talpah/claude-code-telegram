@@ -306,6 +306,52 @@ class DatabaseManager:
                     ON project_threads(project_slug);
                 """,
             ),
+            (
+                5,
+                """
+                -- Semantic memory tables
+
+                CREATE TABLE IF NOT EXISTS memory_entries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    entry_type TEXT NOT NULL CHECK(entry_type IN ('fact', 'goal', 'preference')),
+                    content TEXT NOT NULL,
+                    deadline TEXT,
+                    priority INTEGER DEFAULT 0,
+                    is_active BOOLEAN DEFAULT TRUE,
+                    completed_at TIMESTAMP,
+                    embedding BLOB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                );
+
+                CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts
+                    USING fts5(content, content=memory_entries, content_rowid=id);
+
+                CREATE TRIGGER IF NOT EXISTS memory_fts_insert
+                    AFTER INSERT ON memory_entries
+                BEGIN
+                    INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS memory_fts_delete
+                    AFTER DELETE ON memory_entries
+                BEGIN
+                    INSERT INTO memory_fts(memory_fts, rowid, content) VALUES('delete', old.id, old.content);
+                END;
+
+                CREATE TRIGGER IF NOT EXISTS memory_fts_update
+                    AFTER UPDATE ON memory_entries
+                BEGIN
+                    INSERT INTO memory_fts(memory_fts, rowid, content) VALUES('delete', old.id, old.content);
+                    INSERT INTO memory_fts(rowid, content) VALUES (new.id, new.content);
+                END;
+
+                CREATE INDEX IF NOT EXISTS idx_memory_user_type
+                    ON memory_entries(user_id, entry_type, is_active);
+                """,
+            ),
         ]
 
     async def _init_pool(self):

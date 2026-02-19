@@ -173,6 +173,32 @@ class Settings(BaseSettings):
     )
     projects_config_path: Path | None = Field(None, description="Path to YAML project registry for thread mode")
 
+    # User profile and personalization
+    user_profile_path: Path | None = Field(None, description="Path to user profile.md for context injection")
+    user_name: str | None = Field(None, description="User name for personalization")
+    user_timezone: str = Field("UTC", description="User timezone for scheduling and context")
+
+    # Voice transcription
+    voice_provider: str | None = Field(None, description="Voice provider: 'groq' or 'local'")
+    groq_api_key: SecretStr | None = Field(None, description="Groq API key for voice transcription")
+    whisper_binary: str = Field("whisper-cpp", description="Path to whisper.cpp binary (local provider)")
+    whisper_model_path: str | None = Field(None, description="Path to whisper.cpp model file")
+
+    # Semantic memory
+    enable_memory: bool = Field(False, description="Enable persistent semantic memory")
+    enable_memory_embeddings: bool = Field(
+        True, description="Use local embeddings for semantic search (requires sentence-transformers)"
+    )
+    memory_max_facts: int = Field(50, description="Max facts stored per user")
+    memory_max_context_items: int = Field(10, description="Max memory items injected into context")
+
+    # Proactive check-ins
+    enable_checkins: bool = Field(False, description="Enable proactive check-ins via Claude")
+    checkin_interval_minutes: int = Field(30, description="Check-in evaluation interval in minutes", ge=1)
+    checkin_max_per_day: int = Field(3, description="Max proactive check-ins per day", ge=0)
+    checkin_quiet_hours_start: int = Field(22, description="Quiet hours start (24h UTC)", ge=0, le=23)
+    checkin_quiet_hours_end: int = Field(8, description="Quiet hours end (24h UTC)", ge=0, le=23)
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
 
     @field_validator("allowed_users", "notification_chat_ids", mode="before")

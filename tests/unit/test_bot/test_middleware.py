@@ -133,6 +133,9 @@ class TestMiddlewareBlocksSubsequentGroups:
         auth_manager.authenticate_user = AsyncMock(return_value=False)
         bot.deps["auth_manager"] = auth_manager
 
+        storage = AsyncMock()
+        bot.deps["storage"] = storage
+
         audit_logger = AsyncMock()
         bot.deps["audit_logger"] = audit_logger
 

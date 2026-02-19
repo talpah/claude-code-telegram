@@ -323,6 +323,12 @@ class MessageOrchestrator:
             group=10,
         )
 
+        # Voice / audio messages -> transcribe -> Claude
+        app.add_handler(
+            MessageHandler(filters.VOICE | filters.AUDIO, self._inject_deps(self.agentic_voice)),
+            group=10,
+        )
+
         # Only cd: callbacks (for project selection), scoped by pattern
         app.add_handler(
             CallbackQueryHandler(
@@ -668,14 +674,51 @@ class MessageOrchestrator:
         """Direct Claude passthrough. Simple progress. No suggestions."""
         assert update.message is not None
         assert update.effective_user is not None
-        user_id = update.effective_user.id
         message_text = update.message.text or ""
+        await self._run_agentic_prompt(update, context, message_text)
 
-        logger.info(
-            "Agentic text message",
-            user_id=user_id,
-            message_length=len(message_text),
-        )
+    async def agentic_voice(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Transcribe voice/audio message and route through Claude."""
+        assert update.message is not None
+        assert update.effective_user is not None
+
+        voice_handler = _bd(context).get("voice_handler")
+        if not voice_handler:
+            await update.message.reply_text(
+                "Voice transcription not configured. Set VOICE_PROVIDER (groq or local) in settings."
+            )
+            return
+
+        voice = update.message.voice or update.message.audio
+        if not voice:
+            return
+
+        progress_msg = await update.message.reply_text("Transcribing voice...")
+        try:
+            file = await voice.get_file()
+            ogg_bytes = bytes(await file.download_as_bytearray())
+            transcribed = await voice_handler.transcribe(ogg_bytes)
+        except Exception as e:
+            logger.error("Voice transcription failed", error=str(e), user_id=update.effective_user.id)
+            await progress_msg.edit_text(f"Voice transcription failed: {e}")
+            return
+
+        await progress_msg.delete()
+        prompt = f"🎤 Voice: {transcribed}"
+        await self._run_agentic_prompt(update, context, prompt)
+
+    async def _run_agentic_prompt(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        prompt: str,
+    ) -> None:
+        """Execute a prompt through Claude and deliver the response. Shared by text and voice handlers."""
+        assert update.message is not None
+        assert update.effective_user is not None
+        user_id = update.effective_user.id
+
+        logger.info("Agentic prompt", user_id=user_id, prompt_length=len(prompt))
 
         # Rate limit check
         rate_limiter = _bd(context).get("rate_limiter")
@@ -714,7 +757,7 @@ class MessageOrchestrator:
         success = True
         try:
             claude_response = await claude_integration.run_command(
-                prompt=message_text,
+                prompt=prompt,
                 working_directory=current_dir,
                 user_id=user_id,
                 session_id=session_id,
@@ -744,12 +787,22 @@ class MessageOrchestrator:
                     await storage.save_claude_interaction(
                         user_id=user_id,
                         session_id=claude_response.session_id,
-                        prompt=message_text,
+                        prompt=prompt,
                         response=claude_response,
                         ip_address=None,
                     )
                 except Exception as e:
                     logger.warning("Failed to log interaction", error=str(e))
+
+            # Process memory tags from Claude's response
+            memory_manager = _bd(context).get("memory_manager")
+            if memory_manager and claude_response.content:
+                try:
+                    processed = await memory_manager.process_response(user_id, claude_response.content)
+                    if processed:
+                        logger.debug("Memory updated", count=len(processed))
+                except Exception as e:
+                    logger.warning("Memory processing failed", error=str(e))
 
             # Format response (no reply_markup — strip keyboards)
             from .utils.formatting import ResponseFormatter
@@ -776,11 +829,11 @@ class MessageOrchestrator:
 
         await progress_msg.delete()
 
-        for i, message in enumerate(formatted_messages):
+        for i, msg in enumerate(formatted_messages):
             try:
                 await update.message.reply_text(
-                    message.text,
-                    parse_mode=message.parse_mode,
+                    msg.text,
+                    parse_mode=msg.parse_mode,
                     reply_markup=None,  # No keyboards in agentic mode
                     reply_to_message_id=(update.message.message_id if i == 0 else None),
                 )
@@ -794,7 +847,7 @@ class MessageOrchestrator:
                 )
                 try:
                     await update.message.reply_text(
-                        message.text,
+                        msg.text,
                         reply_markup=None,
                         reply_to_message_id=(update.message.message_id if i == 0 else None),
                     )
@@ -810,7 +863,7 @@ class MessageOrchestrator:
             await audit_logger.log_command(
                 user_id=user_id,
                 command="text_message",
-                args=[message_text[:100]],
+                args=[prompt[:100]],
                 success=success,
             )
 
