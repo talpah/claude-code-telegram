@@ -15,6 +15,7 @@ import zipfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from telegram import Document
 
@@ -28,7 +29,7 @@ class ProcessedFile:
 
     type: str
     prompt: str
-    metadata: dict[str, any]
+    metadata: dict[str, Any]
 
 
 @dataclass
@@ -316,13 +317,14 @@ class FileHandler:
 
         return "\n".join(filter(None, tree_lines))
 
-    def _format_size(self, size: int) -> str:
+    def _format_size(self, size: int | float) -> str:
         """Format file size for display"""
+        fsize: float = float(size)
         for unit in ["B", "KB", "MB", "GB"]:
-            if size < 1024.0:
-                return f"{size:.1f}{unit}"
-            size /= 1024.0
-        return f"{size:.1f}TB"
+            if fsize < 1024.0:
+                return f"{fsize:.1f}{unit}"
+            fsize /= 1024.0
+        return f"{fsize:.1f}TB"
 
     def _find_code_files(self, directory: Path) -> list[Path]:
         """Find all code files in directory"""

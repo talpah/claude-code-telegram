@@ -174,7 +174,7 @@ class ClaudeSDKManager:
             options = ClaudeAgentOptions(
                 max_turns=self.config.claude_max_turns,
                 cwd=str(working_directory),
-                allowed_tools=self.config.claude_allowed_tools,
+                allowed_tools=self.config.claude_allowed_tools or [],
                 cli_path=cli_path,
                 sandbox={
                     "enabled": self.config.sandbox_enabled,
@@ -363,7 +363,7 @@ class ClaudeSDKManager:
             # Re-raise to be handled by the outer try-catch
             raise
 
-    async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], None]) -> None:
+    async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], Any]) -> None:
         """Handle streaming message from claude-agent-sdk."""
         try:
             if isinstance(message, AssistantMessage):

@@ -9,7 +9,7 @@ Features:
 
 import asyncio
 from collections.abc import Callable
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from telegram import Update
@@ -58,12 +58,18 @@ class ClaudeCodeBot:
         builder.pool_timeout(30)
 
         self.app = builder.build()
+        assert self.app is not None
 
         # Initialize feature registry
+        from ..security.validators import SecurityValidator
+        from ..storage.facade import Storage
+
+        storage = cast(Storage, self.deps["storage"])
+        security = cast(SecurityValidator, self.deps["security"])
         self.feature_registry = FeatureRegistry(
             config=self.settings,
-            storage=self.deps.get("storage"),
-            security=self.deps.get("security"),
+            storage=storage,
+            security=security,
         )
 
         # Add feature registry to dependencies
@@ -79,22 +85,25 @@ class ClaudeCodeBot:
         self._add_middleware()
 
         # Set error handler
-        self.app.add_error_handler(self._error_handler)
+        self.app.add_error_handler(self._error_handler)  # type: ignore[arg-type]
 
         logger.info("Bot initialization complete")
 
     async def _set_bot_commands(self) -> None:
         """Set bot command menu via orchestrator."""
+        assert self.app is not None
         commands = await self.orchestrator.get_bot_commands()
         await self.app.bot.set_my_commands(commands)
         logger.info("Bot commands set", commands=[cmd.command for cmd in commands])
 
     def _register_handlers(self) -> None:
         """Register handlers via orchestrator (mode-aware)."""
+        assert self.app is not None
         self.orchestrator.register_handlers(self.app)
 
     def _add_middleware(self) -> None:
         """Add middleware to application."""
+        assert self.app is not None
         from .middleware.auth import auth_middleware
         from .middleware.rate_limit import rate_limit_middleware
         from .middleware.security import security_middleware
@@ -136,14 +145,15 @@ class ClaudeCodeBot:
                 logger.debug(
                     "Skipping bot-originated update in middleware",
                     user_id=update.effective_user.id,
-                    middleware=middleware_func.__name__,
+                    middleware=getattr(middleware_func, "__name__", repr(middleware_func)),
                 )
                 raise ApplicationHandlerStop
 
             # Inject dependencies into context
+            bot_data = cast(dict[str, Any], context.bot_data)
             for key, value in self.deps.items():
-                context.bot_data[key] = value
-            context.bot_data["settings"] = self.settings
+                bot_data[key] = value
+            bot_data["settings"] = self.settings
 
             # Track whether the middleware allowed the request through
             handler_called = False
@@ -170,6 +180,7 @@ class ClaudeCodeBot:
             return
 
         await self.initialize()
+        assert self.app is not None
 
         logger.info("Starting bot", mode="webhook" if self.settings.webhook_url else "polling")
 
@@ -178,7 +189,7 @@ class ClaudeCodeBot:
 
             if self.settings.webhook_url:
                 # Webhook mode
-                await self.app.run_webhook(
+                await self.app.run_webhook(  # type: ignore[misc]
                     listen="0.0.0.0",
                     port=self.settings.webhook_port,
                     url_path=self.settings.webhook_path,
@@ -190,7 +201,9 @@ class ClaudeCodeBot:
                 # Polling mode - initialize and start polling manually
                 await self.app.initialize()
                 await self.app.start()
-                await self.app.updater.start_polling(
+                updater = self.app.updater
+                assert updater is not None
+                await updater.start_polling(
                     allowed_updates=Update.ALL_TYPES,
                     drop_pending_updates=True,
                 )
@@ -221,8 +234,9 @@ class ClaudeCodeBot:
 
             if self.app:
                 # Stop the updater if it's running
-                if self.app.updater.running:
-                    await self.app.updater.stop()
+                updater = self.app.updater
+                if updater and updater.running:
+                    await updater.stop()
 
                 # Stop the application
                 await self.app.stop()
@@ -272,7 +286,7 @@ class ClaudeCodeBot:
         # Log to audit system if available
         from ..security.audit import AuditLogger
 
-        audit_logger: AuditLogger | None = context.bot_data.get("audit_logger")
+        audit_logger: AuditLogger | None = cast(dict[str, Any], context.bot_data).get("audit_logger")
         if audit_logger and update and update.effective_user:
             try:
                 await audit_logger.log_security_violation(

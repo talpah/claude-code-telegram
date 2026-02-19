@@ -187,7 +187,7 @@ class Settings(BaseSettings):
             return [int(uid.strip()) for uid in v.split(",") if uid.strip()]
         if isinstance(v, list):
             return [int(uid) for uid in v]
-        return v  # type: ignore[no-any-return]
+        return v
 
     @field_validator("claude_allowed_tools", mode="before")
     @classmethod
@@ -199,7 +199,7 @@ class Settings(BaseSettings):
             return [tool.strip() for tool in v.split(",") if tool.strip()]
         if isinstance(v, list):
             return [str(tool) for tool in v]
-        return v  # type: ignore[no-any-return]
+        return v
 
     @field_validator("approved_directory")
     @classmethod
@@ -213,14 +213,14 @@ class Settings(BaseSettings):
             raise ValueError(f"Approved directory does not exist: {path}")
         if not path.is_dir():
             raise ValueError(f"Approved directory is not a directory: {path}")
-        return path  # type: ignore[no-any-return]
+        return path
 
     @field_validator("mcp_config_path", mode="before")
     @classmethod
     def validate_mcp_config(cls, v: Any, info: Any) -> Path | None:
         """Validate MCP configuration path if MCP is enabled."""
         if not v:
-            return v  # type: ignore[no-any-return]
+            return v
         if isinstance(v, str):
             v = Path(v)
         if not v.exists():
@@ -241,7 +241,7 @@ class Settings(BaseSettings):
             raise ValueError("'mcpServers' must be an object mapping server names to configurations")
         if not config_data["mcpServers"]:
             raise ValueError("'mcpServers' must contain at least one server configuration")
-        return v  # type: ignore[no-any-return]
+        return v
 
     @field_validator("projects_config_path", mode="before")
     @classmethod
@@ -258,7 +258,7 @@ class Settings(BaseSettings):
             raise ValueError(f"Projects config file does not exist: {v}")
         if not v.is_file():
             raise ValueError(f"Projects config path is not a file: {v}")
-        return v  # type: ignore[no-any-return]
+        return v
 
     @field_validator("project_threads_mode", mode="before")
     @classmethod
@@ -284,7 +284,7 @@ class Settings(BaseSettings):
             return int(value)
         if isinstance(v, int):
             return v
-        return v  # type: ignore[no-any-return]
+        return v
 
     @field_validator("log_level")
     @classmethod
@@ -293,7 +293,7 @@ class Settings(BaseSettings):
         valid_levels = ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"]
         if v.upper() not in valid_levels:
             raise ValueError(f"log_level must be one of {valid_levels}")
-        return v.upper()  # type: ignore[no-any-return]
+        return v.upper()
 
     @model_validator(mode="after")
     def validate_cross_field_dependencies(self) -> "Settings":

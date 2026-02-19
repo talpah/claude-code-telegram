@@ -1,6 +1,7 @@
 """Message handlers for non-command inputs."""
 
 import asyncio
+from typing import Any, cast
 
 import structlog
 from telegram import Update
@@ -14,6 +15,16 @@ from ...security.validators import SecurityValidator
 from ..utils.html_format import escape_html
 
 logger = structlog.get_logger()
+
+
+def _bd(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get bot_data as typed dict."""
+    return cast(dict[str, Any], context.bot_data)
+
+
+def _ud(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get user_data as typed dict."""
+    return cast(dict[str, Any], context.user_data)
 
 
 async def _format_progress_update(update_obj) -> str | None:
@@ -131,13 +142,15 @@ def _format_error_message(error_str: str) -> str:
 
 async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle regular text messages as Claude prompts."""
+    assert update.effective_user is not None
+    assert update.message is not None
     user_id = update.effective_user.id
-    message_text = update.message.text
-    settings: Settings = context.bot_data["settings"]
+    message_text = update.message.text or ""
+    settings: Settings = _bd(context)["settings"]
 
     # Get services
-    rate_limiter: RateLimiter | None = context.bot_data.get("rate_limiter")
-    audit_logger: AuditLogger | None = context.bot_data.get("audit_logger")
+    rate_limiter: RateLimiter | None = _bd(context).get("rate_limiter")
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
 
     logger.info("Processing text message", user_id=user_id, message_length=len(message_text))
 
@@ -161,8 +174,8 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
 
         # Get Claude integration and storage from context
-        claude_integration = context.bot_data.get("claude_integration")
-        storage = context.bot_data.get("storage")
+        claude_integration = _bd(context).get("claude_integration")
+        storage = _bd(context).get("storage")
 
         if not claude_integration:
             await update.message.reply_text(
@@ -174,14 +187,14 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             return
 
         # Get current directory
-        current_dir = context.user_data.get("current_directory", settings.approved_directory)
+        current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
         # Get existing session ID
-        session_id = context.user_data.get("claude_session_id")
+        session_id = _ud(context).get("claude_session_id")
 
         # Check if /new was used — skip auto-resume for this first message.
         # Flag is only cleared after a successful run so retries keep the intent.
-        force_new = bool(context.user_data.get("force_new_session"))
+        force_new = bool(_ud(context).get("force_new_session"))
 
         # Enhanced stream updates handler with progress tracking
         async def stream_handler(update_obj):
@@ -205,10 +218,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
             # New session created successfully — clear the one-shot flag
             if force_new:
-                context.user_data["force_new_session"] = False
+                _ud(context)["force_new_session"] = False
 
             # Update session ID
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             # Check if Claude changed the working directory and update our tracking
             _update_working_directory_from_claude_response(claude_response, context, settings, user_id)
@@ -287,10 +300,10 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                     )
 
         # Update session info
-        context.user_data["last_message"] = update.message.text
+        _ud(context)["last_message"] = update.message.text
 
         # Add conversation enhancements if available
-        features = context.bot_data.get("features")
+        features = _bd(context).get("features")
         conversation_enhancer = features.get_conversation_enhancer() if features else None
 
         if conversation_enhancer and claude_response:
@@ -334,7 +347,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await audit_logger.log_command(
                 user_id=user_id,
                 command="text_message",
-                args=[update.message.text[:100]],  # First 100 chars
+                args=[(update.message.text or "")[:100]],  # First 100 chars
                 success=True,
             )
 
@@ -355,7 +368,7 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
             await audit_logger.log_command(
                 user_id=user_id,
                 command="text_message",
-                args=[update.message.text[:100]],
+                args=[(update.message.text or "")[:100]],
                 success=False,
             )
 
@@ -364,14 +377,17 @@ async def handle_text_message(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle file uploads."""
+    assert update.effective_user is not None
+    assert update.message is not None
+    assert update.message.document is not None
     user_id = update.effective_user.id
     document = update.message.document
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Get services
-    security_validator: SecurityValidator | None = context.bot_data.get("security_validator")
-    audit_logger: AuditLogger | None = context.bot_data.get("audit_logger")
-    rate_limiter: RateLimiter | None = context.bot_data.get("rate_limiter")
+    security_validator: SecurityValidator | None = _bd(context).get("security_validator")
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
+    rate_limiter: RateLimiter | None = _bd(context).get("rate_limiter")
 
     logger.info(
         "Processing document upload",
@@ -402,17 +418,18 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
         # Check file size limits
         max_size = 10 * 1024 * 1024  # 10MB
-        if document.file_size > max_size:
+        file_size = document.file_size or 0
+        if file_size > max_size:
             await update.message.reply_text(
                 f"❌ <b>File Too Large</b>\n\n"
                 f"Maximum file size: {max_size // 1024 // 1024}MB\n"
-                f"Your file: {document.file_size / 1024 / 1024:.1f}MB",
+                f"Your file: {file_size / 1024 / 1024:.1f}MB",
                 parse_mode="HTML",
             )
             return
 
         # Check rate limit for file processing
-        file_cost = _estimate_file_processing_cost(document.file_size)
+        file_cost = _estimate_file_processing_cost(file_size)
         if rate_limiter:
             allowed, limit_message = await rate_limiter.check_rate_limit(user_id, file_cost)
             if not allowed:
@@ -428,7 +445,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         )
 
         # Check if enhanced file handler is available
-        features = context.bot_data.get("features")
+        features = _bd(context).get("features")
         file_handler = features.get_file_handler() if features else None
 
         if file_handler:
@@ -492,7 +509,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         claude_progress_msg = await update.message.reply_text("🤖 Processing file with Claude...", parse_mode="HTML")
 
         # Get Claude integration from context
-        claude_integration = context.bot_data.get("claude_integration")
+        claude_integration = _bd(context).get("claude_integration")
 
         if not claude_integration:
             await claude_progress_msg.edit_text(
@@ -502,8 +519,8 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             return
 
         # Get current directory and session
-        current_dir = context.user_data.get("current_directory", settings.approved_directory)
-        session_id = context.user_data.get("claude_session_id")
+        current_dir = _ud(context).get("current_directory", settings.approved_directory)
+        session_id = _ud(context).get("claude_session_id")
 
         # Process with Claude
         try:
@@ -515,7 +532,7 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
             )
 
             # Update session ID
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             # Check if Claude changed the working directory and update our tracking
             _update_working_directory_from_claude_response(claude_response, context, settings, user_id)
@@ -579,11 +596,13 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle photo uploads."""
+    assert update.effective_user is not None
+    assert update.message is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Check if enhanced image handler is available
-    features = context.bot_data.get("features")
+    features = _bd(context).get("features")
     image_handler = features.get_image_handler() if features else None
 
     if image_handler:
@@ -606,7 +625,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             )
 
             # Get Claude integration
-            claude_integration = context.bot_data.get("claude_integration")
+            claude_integration = _bd(context).get("claude_integration")
 
             if not claude_integration:
                 await claude_progress_msg.edit_text(
@@ -617,8 +636,8 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 return
 
             # Get current directory and session
-            current_dir = context.user_data.get("current_directory", settings.approved_directory)
-            session_id = context.user_data.get("claude_session_id")
+            current_dir = _ud(context).get("current_directory", settings.approved_directory)
+            session_id = _ud(context).get("claude_session_id")
 
             # Process with Claude
             try:
@@ -630,7 +649,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 )
 
                 # Update session ID
-                context.user_data["claude_session_id"] = claude_response.session_id
+                _ud(context)["claude_session_id"] = claude_response.session_id
 
                 # Format and send response
                 from ..utils.formatting import ResponseFormatter
@@ -725,8 +744,8 @@ def _estimate_file_processing_cost(file_size: int) -> float:
 
 async def _generate_placeholder_response(message_text: str, context: ContextTypes.DEFAULT_TYPE) -> dict:
     """Generate placeholder response until Claude integration is implemented."""
-    settings: Settings = context.bot_data["settings"]
-    current_dir = getattr(context.user_data, "current_directory", settings.approved_directory)
+    settings: Settings = _bd(context)["settings"]
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Analyze the message for intent
@@ -803,7 +822,7 @@ def _update_working_directory_from_claude_response(claude_response, context, set
     ]
 
     content = claude_response.content.lower()
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     for pattern in patterns:
         matches = re.findall(pattern, content, re.MULTILINE | re.IGNORECASE)
@@ -824,7 +843,7 @@ def _update_working_directory_from_claude_response(claude_response, context, set
 
                 # Validate that the new path is within the approved directory
                 if new_path.is_relative_to(settings.approved_directory) and new_path.exists():
-                    context.user_data["current_directory"] = new_path
+                    _ud(context)["current_directory"] = new_path
                     logger.info(
                         "Updated working directory from Claude response",
                         old_dir=str(current_dir),

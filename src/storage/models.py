@@ -57,7 +57,7 @@ class UserModel:
         for field in ["first_seen", "last_active"]:
             data[field] = _parse_datetime(data.get(field))
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -92,7 +92,7 @@ class SessionModel:
         for field in ["created_at", "last_used"]:
             data[field] = _parse_datetime(data.get(field))
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
     def is_expired(self, timeout_hours: int) -> bool:
         """Check if session has expired."""
@@ -135,7 +135,7 @@ class ProjectThreadModel:
                 data[field] = datetime.fromisoformat(val)
         data["is_active"] = bool(data.get("is_active", True))
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -168,7 +168,7 @@ class MessageModel:
         # Parse datetime fields
         data["timestamp"] = _parse_datetime(data.get("timestamp"))
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -206,11 +206,11 @@ class ToolUsageModel:
         # Parse JSON fields
         if data.get("tool_input"):
             try:
-                data["tool_input"] = json.loads(data["tool_input"])
+                data["tool_input"] = json.loads(data["tool_input"])  # type: ignore[arg-type]
             except (json.JSONDecodeError, TypeError):
                 data["tool_input"] = {}
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -247,11 +247,11 @@ class AuditLogModel:
         # Parse JSON fields
         if data.get("event_data"):
             try:
-                data["event_data"] = json.loads(data["event_data"])
+                data["event_data"] = json.loads(data["event_data"])  # type: ignore[arg-type]
             except (json.JSONDecodeError, TypeError):
                 data["event_data"] = {}
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
 
 @dataclass
@@ -267,7 +267,7 @@ class CostTrackingModel:
     @classmethod
     def from_row(cls, row: aiosqlite.Row) -> "CostTrackingModel":
         """Create from database row."""
-        return cls(**dict(row))
+        return cls(**dict(row))  # type: ignore[arg-type]
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -304,7 +304,7 @@ class UserTokenModel:
         for field in ["created_at", "expires_at", "last_used"]:
             data[field] = _parse_datetime(data.get(field))
 
-        return cls(**data)
+        return cls(**data)  # type: ignore[arg-type]
 
     def is_expired(self) -> bool:
         """Check if token has expired."""

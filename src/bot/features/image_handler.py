@@ -10,6 +10,7 @@ Features:
 
 import base64
 from dataclasses import dataclass
+from typing import Any
 
 from telegram import PhotoSize
 
@@ -24,7 +25,7 @@ class ProcessedImage:
     image_type: str
     base64_data: str
     size: int
-    metadata: dict[str, any] = None
+    metadata: dict[str, Any] | None = None
 
 
 class ImageHandler:
@@ -68,7 +69,7 @@ class ImageHandler:
             },
         )
 
-    def _detect_image_type(self, image_bytes: bytes) -> str:
+    def _detect_image_type(self, image_bytes: bytes | bytearray) -> str:
         """Detect type of image using format and dimension heuristics."""
         fmt = self._detect_format(image_bytes)
         width, height = self._get_dimensions(image_bytes, fmt)
@@ -105,7 +106,7 @@ class ImageHandler:
         return "generic"
 
     @staticmethod
-    def _get_dimensions(image_bytes: bytes, fmt: str) -> tuple:
+    def _get_dimensions(image_bytes: bytes | bytearray, fmt: str) -> tuple:
         """Extract width and height from image bytes without PIL."""
         try:
             if fmt == "png" and len(image_bytes) >= 24:
@@ -143,7 +144,7 @@ class ImageHandler:
             pass
         return 0, 0
 
-    def _detect_format(self, image_bytes: bytes) -> str:
+    def _detect_format(self, image_bytes: bytes | bytearray) -> str:
         """Detect image format from magic bytes"""
         # Check magic bytes for common formats
         if image_bytes.startswith(b"\x89PNG"):

@@ -10,7 +10,7 @@ import re
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -30,6 +30,17 @@ from ..projects import PrivateTopicsUnavailableError
 from .utils.html_format import escape_html
 
 logger = structlog.get_logger()
+
+
+def _bd(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Cast context.bot_data to a concrete dict type."""
+    return cast(dict[str, Any], context.bot_data)
+
+
+def _ud(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Cast context.user_data to a concrete dict type."""
+    return cast(dict[str, Any], context.user_data)
+
 
 # Patterns that look like secrets/credentials in CLI arguments
 _SECRET_PATTERNS: list[re.Pattern[str]] = [
@@ -105,17 +116,17 @@ class MessageOrchestrator:
         self.settings = settings
         self.deps = deps
 
-    def _inject_deps(self, handler: Callable) -> Callable:  # type: ignore[type-arg]
-        """Wrap handler to inject dependencies into context.bot_data."""
+    def _inject_deps(self, handler: Callable) -> Callable:
+        """Wrap handler to inject dependencies into _bd(context)."""
 
         async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             for key, value in self.deps.items():
-                context.bot_data[key] = value
-            context.bot_data["settings"] = self.settings
-            context.user_data.pop("_thread_context", None)
+                _bd(context)[key] = value
+            _bd(context)["settings"] = self.settings
+            _ud(context).pop("_thread_context", None)
 
-            is_sync_bypass = handler.__name__ == "sync_threads"
-            is_start_bypass = handler.__name__ in {"start_command", "agentic_start"}
+            is_sync_bypass = getattr(handler, "__name__", "") == "sync_threads"
+            is_start_bypass = getattr(handler, "__name__", "") in {"start_command", "agentic_start"}
             message_thread_id = self._extract_message_thread_id(update)
             should_enforce = self.settings.enable_project_threads
 
@@ -140,7 +151,7 @@ class MessageOrchestrator:
 
     async def _apply_thread_routing_context(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
         """Enforce strict project-thread routing and load thread-local state."""
-        manager = context.bot_data.get("project_threads_manager")
+        manager = _bd(context).get("project_threads_manager")
         if manager is None:
             await self._reject_for_thread_mode(
                 update,
@@ -185,7 +196,7 @@ class MessageOrchestrator:
             return False
 
         state_key = f"{chat.id}:{message_thread_id}"
-        thread_states = context.user_data.setdefault("thread_state", {})
+        thread_states = _ud(context).setdefault("thread_state", {})
         state = thread_states.get(state_key, {})
 
         project_root = project.absolute_path
@@ -194,9 +205,9 @@ class MessageOrchestrator:
         if not self._is_within(current_dir, project_root) or not current_dir.is_dir():
             current_dir = project_root
 
-        context.user_data["current_directory"] = current_dir
-        context.user_data["claude_session_id"] = state.get("claude_session_id")
-        context.user_data["_thread_context"] = {
+        _ud(context)["current_directory"] = current_dir
+        _ud(context)["claude_session_id"] = state.get("claude_session_id")
+        _ud(context)["_thread_context"] = {
             "chat_id": chat.id,
             "message_thread_id": message_thread_id,
             "state_key": state_key,
@@ -208,22 +219,22 @@ class MessageOrchestrator:
 
     def _persist_thread_state(self, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Persist compatibility keys back into per-thread state."""
-        thread_context = context.user_data.get("_thread_context")
+        thread_context = _ud(context).get("_thread_context")
         if not thread_context:
             return
 
         project_root = Path(thread_context["project_root"])
-        current_dir = context.user_data.get("current_directory", project_root)
+        current_dir = _ud(context).get("current_directory", project_root)
         if not isinstance(current_dir, Path):
             current_dir = Path(str(current_dir))
         current_dir = current_dir.resolve()
         if not self._is_within(current_dir, project_root) or not current_dir.is_dir():
             current_dir = project_root
 
-        thread_states = context.user_data.setdefault("thread_state", {})
+        thread_states = _ud(context).setdefault("thread_state", {})
         thread_states[thread_context["state_key"]] = {
             "current_directory": str(current_dir),
-            "claude_session_id": context.user_data.get("claude_session_id"),
+            "claude_session_id": _ud(context).get("claude_session_id"),
             "project_slug": thread_context["project_slug"],
         }
 
@@ -260,7 +271,7 @@ class MessageOrchestrator:
             except Exception:
                 pass
             if query.message:
-                await query.message.reply_text(message, parse_mode="HTML")
+                await query.message.reply_text(message, parse_mode="HTML")  # type: ignore[union-attr]
             return
 
         if update.effective_message:
@@ -366,7 +377,7 @@ class MessageOrchestrator:
 
         logger.info("Classic handlers registered (13 commands + full handler set)")
 
-    async def get_bot_commands(self) -> list:  # type: ignore[type-arg]
+    async def get_bot_commands(self) -> list:
         """Return bot commands appropriate for current mode."""
         if self.settings.agentic_mode:
             commands = [
@@ -403,6 +414,8 @@ class MessageOrchestrator:
 
     async def agentic_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Brief welcome, no buttons."""
+        assert update.message is not None
+        assert update.effective_user is not None
         user = update.effective_user
         sync_line = ""
         if self.settings.enable_project_threads and self.settings.project_threads_mode == "private":
@@ -413,7 +426,7 @@ class MessageOrchestrator:
                     parse_mode="HTML",
                 )
                 return
-            manager = context.bot_data.get("project_threads_manager")
+            manager = _bd(context).get("project_threads_manager")
             if manager:
                 try:
                     result = await manager.sync_topics(
@@ -429,7 +442,7 @@ class MessageOrchestrator:
                     return
                 except Exception:
                     sync_line = "\n\n🧵 Topic sync failed. Run /sync_threads to retry."
-        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
+        current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
         dir_display = f"<code>{current_dir}/</code>"
 
         safe_name = escape_html(user.first_name)
@@ -444,23 +457,26 @@ class MessageOrchestrator:
 
     async def agentic_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Reset session, one-line confirmation."""
-        context.user_data["claude_session_id"] = None
-        context.user_data["session_started"] = True
-        context.user_data["force_new_session"] = True
+        assert update.message is not None
+        _ud(context)["claude_session_id"] = None
+        _ud(context)["session_started"] = True
+        _ud(context)["force_new_session"] = True
 
         await update.message.reply_text("Session reset. What's next?")
 
     async def agentic_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Compact one-line status, no buttons."""
-        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
+        assert update.message is not None
+        assert update.effective_user is not None
+        current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
         dir_display = str(current_dir)
 
-        session_id = context.user_data.get("claude_session_id")
+        session_id = _ud(context).get("claude_session_id")
         session_status = "active" if session_id else "none"
 
         # Cost info
         cost_str = ""
-        rate_limiter = context.bot_data.get("rate_limiter")
+        rate_limiter = _bd(context).get("rate_limiter")
         if rate_limiter:
             try:
                 user_status = rate_limiter.get_user_status(update.effective_user.id)
@@ -474,13 +490,14 @@ class MessageOrchestrator:
 
     def _get_verbose_level(self, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Return effective verbose level: per-user override or global default."""
-        user_override = context.user_data.get("verbose_level")
+        user_override = _ud(context).get("verbose_level")
         if user_override is not None:
             return int(user_override)
         return self.settings.verbose_level
 
     async def agentic_verbose(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Set output verbosity: /verbose [0|1|2]."""
+        assert update.message is not None
         args = update.message.text.split()[1:] if update.message.text else []
         if not args:
             current = self._get_verbose_level(context)
@@ -503,7 +520,7 @@ class MessageOrchestrator:
             await update.message.reply_text("Please use: /verbose 0, /verbose 1, or /verbose 2")
             return
 
-        context.user_data["verbose_level"] = level
+        _ud(context)["verbose_level"] = level
         labels = {0: "quiet", 1: "normal", 2: "detailed"}
         await update.message.reply_text(
             f"Verbosity set to <b>{level}</b> ({labels[level]})",
@@ -649,8 +666,10 @@ class MessageOrchestrator:
 
     async def agentic_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Direct Claude passthrough. Simple progress. No suggestions."""
+        assert update.message is not None
+        assert update.effective_user is not None
         user_id = update.effective_user.id
-        message_text = update.message.text
+        message_text = update.message.text or ""
 
         logger.info(
             "Agentic text message",
@@ -659,7 +678,7 @@ class MessageOrchestrator:
         )
 
         # Rate limit check
-        rate_limiter = context.bot_data.get("rate_limiter")
+        rate_limiter = _bd(context).get("rate_limiter")
         if rate_limiter:
             allowed, limit_message = await rate_limiter.check_rate_limit(user_id, 0.0)
             if not allowed:
@@ -672,17 +691,17 @@ class MessageOrchestrator:
         verbose_level = self._get_verbose_level(context)
         progress_msg = await update.message.reply_text("Working...")
 
-        claude_integration = context.bot_data.get("claude_integration")
+        claude_integration = _bd(context).get("claude_integration")
         if not claude_integration:
             await progress_msg.edit_text("Claude integration not available. Check configuration.")
             return
 
-        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
-        session_id = context.user_data.get("claude_session_id")
+        current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
+        session_id = _ud(context).get("claude_session_id")
 
         # Check if /new was used — skip auto-resume for this first message.
         # Flag is only cleared after a successful run so retries keep the intent.
-        force_new = bool(context.user_data.get("force_new_session"))
+        force_new = bool(_ud(context).get("force_new_session"))
 
         # --- Verbose progress tracking via stream callback ---
         tool_log: list[dict[str, Any]] = []
@@ -705,9 +724,9 @@ class MessageOrchestrator:
 
             # New session created successfully — clear the one-shot flag
             if force_new:
-                context.user_data["force_new_session"] = False
+                _ud(context)["force_new_session"] = False
 
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             # Track actual cost post-execution
             if rate_limiter and claude_response.cost and claude_response.cost > 0:
@@ -719,7 +738,7 @@ class MessageOrchestrator:
             _update_working_directory_from_claude_response(claude_response, context, self.settings, user_id)
 
             # Store interaction
-            storage = context.bot_data.get("storage")
+            storage = _bd(context).get("storage")
             if storage:
                 try:
                     await storage.save_claude_interaction(
@@ -786,7 +805,7 @@ class MessageOrchestrator:
                     )
 
         # Audit log
-        audit_logger = context.bot_data.get("audit_logger")
+        audit_logger = _bd(context).get("audit_logger")
         if audit_logger:
             await audit_logger.log_command(
                 user_id=user_id,
@@ -797,6 +816,9 @@ class MessageOrchestrator:
 
     async def agentic_document(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Process file upload -> Claude, minimal chrome."""
+        assert update.message is not None
+        assert update.effective_user is not None
+        assert update.message.document is not None
         user_id = update.effective_user.id
         document = update.message.document
 
@@ -807,7 +829,7 @@ class MessageOrchestrator:
         )
 
         # Security validation
-        security_validator = context.bot_data.get("security_validator")
+        security_validator = _bd(context).get("security_validator")
         if security_validator:
             valid, error = security_validator.validate_filename(document.file_name)
             if not valid:
@@ -816,8 +838,9 @@ class MessageOrchestrator:
 
         # Size check
         max_size = 10 * 1024 * 1024
-        if document.file_size > max_size:
-            await update.message.reply_text(f"File too large ({document.file_size / 1024 / 1024:.1f}MB). Max: 10MB.")
+        file_size = document.file_size or 0
+        if file_size > max_size:
+            await update.message.reply_text(f"File too large ({file_size / 1024 / 1024:.1f}MB). Max: 10MB.")
             return
 
         chat = update.message.chat
@@ -825,7 +848,7 @@ class MessageOrchestrator:
         progress_msg = await update.message.reply_text("Working...")
 
         # Try enhanced file handler, fall back to basic
-        features = context.bot_data.get("features")
+        features = _bd(context).get("features")
         file_handler = features.get_file_handler() if features else None
         prompt: str | None = None
 
@@ -854,17 +877,17 @@ class MessageOrchestrator:
                 return
 
         # Process with Claude
-        claude_integration = context.bot_data.get("claude_integration")
+        claude_integration = _bd(context).get("claude_integration")
         if not claude_integration:
             await progress_msg.edit_text("Claude integration not available. Check configuration.")
             return
 
-        current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
-        session_id = context.user_data.get("claude_session_id")
+        current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
+        session_id = _ud(context).get("claude_session_id")
 
         # Check if /new was used — skip auto-resume for this first message.
         # Flag is only cleared after a successful run so retries keep the intent.
-        force_new = bool(context.user_data.get("force_new_session"))
+        force_new = bool(_ud(context).get("force_new_session"))
 
         verbose_level = self._get_verbose_level(context)
         tool_log: list[dict[str, Any]] = []
@@ -882,9 +905,9 @@ class MessageOrchestrator:
             )
 
             if force_new:
-                context.user_data["force_new_session"] = False
+                _ud(context)["force_new_session"] = False
 
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             from .handlers.message import _update_working_directory_from_claude_response
 
@@ -917,9 +940,11 @@ class MessageOrchestrator:
 
     async def agentic_photo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Process photo -> Claude, minimal chrome."""
+        assert update.message is not None
+        assert update.effective_user is not None
         user_id = update.effective_user.id
 
-        features = context.bot_data.get("features")
+        features = _bd(context).get("features")
         image_handler = features.get_image_handler() if features else None
 
         if not image_handler:
@@ -934,17 +959,17 @@ class MessageOrchestrator:
             photo = update.message.photo[-1]
             processed_image = await image_handler.process_image(photo, update.message.caption)
 
-            claude_integration = context.bot_data.get("claude_integration")
+            claude_integration = _bd(context).get("claude_integration")
             if not claude_integration:
                 await progress_msg.edit_text("Claude integration not available. Check configuration.")
                 return
 
-            current_dir = context.user_data.get("current_directory", self.settings.approved_directory)
-            session_id = context.user_data.get("claude_session_id")
+            current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
+            session_id = _ud(context).get("claude_session_id")
 
             # Check if /new was used — skip auto-resume for this first message.
             # Flag is only cleared after a successful run so retries keep the intent.
-            force_new = bool(context.user_data.get("force_new_session"))
+            force_new = bool(_ud(context).get("force_new_session"))
 
             verbose_level = self._get_verbose_level(context)
             tool_log: list[dict[str, Any]] = []
@@ -964,9 +989,9 @@ class MessageOrchestrator:
                 heartbeat.cancel()
 
             if force_new:
-                context.user_data["force_new_session"] = False
+                _ud(context)["force_new_session"] = False
 
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             from .utils.formatting import ResponseFormatter
 
@@ -997,9 +1022,11 @@ class MessageOrchestrator:
         /repo          — list subdirectories with git indicators
         /repo <name>   — switch to that directory, resume session if available
         """
+        assert update.message is not None
+        assert update.effective_user is not None
         args = update.message.text.split()[1:] if update.message.text else []
         base = self.settings.approved_directory
-        current_dir = context.user_data.get("current_directory", base)
+        current_dir = _ud(context).get("current_directory", base)
 
         if args:
             # Switch to named repo
@@ -1012,16 +1039,16 @@ class MessageOrchestrator:
                 )
                 return
 
-            context.user_data["current_directory"] = target_path
+            _ud(context)["current_directory"] = target_path
 
             # Try to find a resumable session
-            claude_integration = context.bot_data.get("claude_integration")
+            claude_integration = _bd(context).get("claude_integration")
             session_id = None
             if claude_integration:
                 existing = await claude_integration._find_resumable_session(update.effective_user.id, target_path)
                 if existing:
                     session_id = existing.session_id
-            context.user_data["claude_session_id"] = session_id
+            _ud(context)["claude_session_id"] = session_id
 
             is_git = (target_path / ".git").is_dir()
             git_badge = " (git)" if is_git else ""
@@ -1052,7 +1079,7 @@ class MessageOrchestrator:
             return
 
         lines: list[str] = []
-        keyboard_rows: list[list] = []  # type: ignore[type-arg]
+        keyboard_rows: list[list] = []
         current_name = current_dir.name if current_dir != base else None
 
         for d in entries:
@@ -1081,6 +1108,9 @@ class MessageOrchestrator:
     async def _agentic_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle cd: callbacks — switch directory and resume session if available."""
         query = update.callback_query
+        assert query is not None
+        assert query.from_user is not None
+        assert query.data is not None
         await query.answer()
 
         data = query.data
@@ -1096,16 +1126,16 @@ class MessageOrchestrator:
             )
             return
 
-        context.user_data["current_directory"] = new_path
+        _ud(context)["current_directory"] = new_path
 
         # Look for a resumable session instead of always clearing
-        claude_integration = context.bot_data.get("claude_integration")
+        claude_integration = _bd(context).get("claude_integration")
         session_id = None
         if claude_integration:
             existing = await claude_integration._find_resumable_session(query.from_user.id, new_path)
             if existing:
                 session_id = existing.session_id
-        context.user_data["claude_session_id"] = session_id
+        _ud(context)["claude_session_id"] = session_id
 
         is_git = (new_path / ".git").is_dir()
         git_badge = " (git)" if is_git else ""
@@ -1117,7 +1147,7 @@ class MessageOrchestrator:
         )
 
         # Audit log
-        audit_logger = context.bot_data.get("audit_logger")
+        audit_logger = _bd(context).get("audit_logger")
         if audit_logger:
             await audit_logger.log_command(
                 user_id=query.from_user.id,

@@ -243,7 +243,7 @@ class Storage:
             "projects": list(set(s.project_path for s in sessions)),
         }
 
-    async def get_session_history(self, session_id: str, limit: int = 50) -> dict[str, Any]:
+    async def get_session_history(self, session_id: str, limit: int = 50) -> dict[str, Any] | None:
         """Get session history with messages and tools."""
         session = await self.sessions.get_session(session_id)
         if not session:
@@ -269,7 +269,7 @@ class Storage:
 
         return {"sessions_cleaned": sessions_cleaned}
 
-    async def get_user_dashboard(self, user_id: int) -> dict[str, Any]:
+    async def get_user_dashboard(self, user_id: int) -> dict[str, Any] | None:
         """Get comprehensive user dashboard data."""
         # Get user info
         user = await self.users.get_user(user_id)

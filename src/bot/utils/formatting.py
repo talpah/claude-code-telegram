@@ -408,7 +408,7 @@ class ResponseFormatter:
         This method now just truncates oversized code blocks.
         """
 
-        def _truncate_code(m: re.Match) -> str:  # type: ignore[type-arg]
+        def _truncate_code(m: re.Match) -> str:
             full = m.group(0)
             if len(full) > self.max_code_block_length:
                 # Re-extract and truncate the inner content

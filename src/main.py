@@ -109,7 +109,9 @@ async def create_application(config: Settings) -> dict[str, Any]:
     # Add token provider if enabled
     if config.enable_token_auth:
         token_storage = SQLiteTokenStorage(storage.db_manager)
-        providers.append(TokenAuthProvider(config.auth_token_secret, token_storage))
+        auth_secret = config.auth_secret_str
+        assert auth_secret is not None
+        providers.append(TokenAuthProvider(auth_secret, token_storage))
 
     # Fall back to allowing all users in development mode
     if not providers and config.development_mode:

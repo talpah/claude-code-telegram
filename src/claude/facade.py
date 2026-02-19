@@ -5,7 +5,7 @@ Provides simple interface for bot handlers.
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import structlog
 
@@ -14,7 +14,7 @@ from .exceptions import ClaudeToolValidationError
 from .integration import ClaudeProcessManager, ClaudeResponse, StreamUpdate
 from .monitor import ToolMonitor
 from .sdk_integration import ClaudeSDKManager
-from .session import SessionManager
+from .session import ClaudeSession, SessionManager
 
 logger = structlog.get_logger()
 
@@ -80,8 +80,13 @@ class ClaudeIntegration:
                     user_id=user_id,
                 )
 
+        assert self.session_manager is not None, "session_manager required"
+        assert self.tool_monitor is not None, "tool_monitor required"
+        session_manager = self.session_manager
+        tool_monitor = self.tool_monitor
+
         # Get or create session
-        session = await self.session_manager.get_or_create_session(user_id, working_directory, session_id)
+        session = await session_manager.get_or_create_session(user_id, working_directory, session_id)
 
         # Track streaming updates and validate tool calls
         tools_validated = True
@@ -95,7 +100,7 @@ class ClaudeIntegration:
             if update.tool_calls:
                 for tool_call in update.tool_calls:
                     tool_name = tool_call["name"]
-                    valid, error = await self.tool_monitor.validate_tool_call(
+                    valid, error = await tool_monitor.validate_tool_call(
                         tool_name,
                         tool_call.get("input", {}),
                         working_directory,
@@ -107,7 +112,7 @@ class ClaudeIntegration:
                         validation_errors.append(error)
 
                         # Track blocked tools
-                        if "Tool not allowed:" in error:
+                        if error and "Tool not allowed:" in error:
                             blocked_tools.add(tool_name)
 
                         logger.error(
@@ -168,10 +173,10 @@ class ClaudeIntegration:
                         error=str(resume_error),
                     )
                     # Clean up the stale session
-                    await self.session_manager.remove_session(session.session_id)
+                    await session_manager.remove_session(session.session_id)
 
                     # Create a fresh session and retry
-                    session = await self.session_manager.get_or_create_session(user_id, working_directory)
+                    session = await session_manager.get_or_create_session(user_id, working_directory)
                     response = await self._execute_with_fallback(
                         prompt=prompt,
                         working_directory=working_directory,
@@ -222,7 +227,7 @@ class ClaudeIntegration:
 
             # Update session (this may change the session_id for new sessions)
             old_session_id = session.session_id
-            await self.session_manager.update_session(session.session_id, response)
+            await session_manager.update_session(session.session_id, response)
 
             # For new sessions, get the updated session_id from the session manager
             if hasattr(session, "is_new_session") and response.session_id:
@@ -277,7 +282,7 @@ class ClaudeIntegration:
                 )
                 # Reset failure count on success
                 self._sdk_failed_count = 0
-                return response
+                return response  # type: ignore[return-value]
 
             except Exception as e:
                 error_str = str(e)
@@ -339,13 +344,14 @@ class ClaudeIntegration:
         self,
         user_id: int,
         working_directory: Path,
-    ) -> Optional["ClaudeSession"]:  # noqa: F821
+    ) -> ClaudeSession | None:
         """Find the most recent resumable session for a user in a directory.
 
         Returns the session if one exists that is non-expired and has a real
         (non-temporary) session ID from Claude. Returns None otherwise.
         """
 
+        assert self.session_manager is not None, "session_manager required"
         sessions = await self.session_manager._get_user_sessions(user_id)
 
         matching_sessions = [
@@ -376,6 +382,7 @@ class ClaudeIntegration:
             has_prompt=bool(prompt),
         )
 
+        assert self.session_manager is not None, "session_manager required"
         # Get user's sessions
         sessions = await self.session_manager._get_user_sessions(user_id)
 
@@ -403,10 +410,12 @@ class ClaudeIntegration:
 
     async def get_session_info(self, session_id: str) -> dict[str, Any] | None:
         """Get session information."""
+        assert self.session_manager is not None, "session_manager required"
         return await self.session_manager.get_session_info(session_id)
 
     async def get_user_sessions(self, user_id: int) -> list[dict[str, Any]]:
         """Get all sessions for a user."""
+        assert self.session_manager is not None, "session_manager required"
         sessions = await self.session_manager._get_user_sessions(user_id)
         return [
             {
@@ -424,14 +433,18 @@ class ClaudeIntegration:
 
     async def cleanup_expired_sessions(self) -> int:
         """Clean up expired sessions."""
+        assert self.session_manager is not None, "session_manager required"
         return await self.session_manager.cleanup_expired_sessions()
 
     async def get_tool_stats(self) -> dict[str, Any]:
         """Get tool usage statistics."""
+        assert self.tool_monitor is not None, "tool_monitor required"
         return self.tool_monitor.get_tool_stats()
 
     async def get_user_summary(self, user_id: int) -> dict[str, Any]:
         """Get comprehensive user summary."""
+        assert self.session_manager is not None, "session_manager required"
+        assert self.tool_monitor is not None, "tool_monitor required"
         session_summary = await self.session_manager.get_user_session_summary(user_id)
         tool_usage = self.tool_monitor.get_user_tool_usage(user_id)
 
@@ -446,7 +459,8 @@ class ClaudeIntegration:
         logger.info("Shutting down Claude integration")
 
         # Kill any active processes
-        await self.manager.kill_all_processes()
+        active_manager = self.sdk_manager or self.process_manager
+        await active_manager.kill_all_processes()
 
         # Clean up expired sessions
         await self.cleanup_expired_sessions()

@@ -1,6 +1,7 @@
 """Handle inline keyboard callbacks."""
 
 from pathlib import Path
+from typing import Any, cast
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -13,6 +14,16 @@ from ...security.validators import SecurityValidator
 from ..utils.html_format import escape_html
 
 logger = structlog.get_logger()
+
+
+def _bd(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get bot_data as typed dict."""
+    return cast(dict[str, Any], context.bot_data)
+
+
+def _ud(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get user_data as typed dict."""
+    return cast(dict[str, Any], context.user_data)
 
 
 def _is_within_root(path: Path, root: Path) -> bool:
@@ -28,7 +39,7 @@ def _get_thread_project_root(settings: Settings, context: ContextTypes.DEFAULT_T
     """Get thread project root when strict thread mode is active."""
     if not settings.enable_project_threads:
         return None
-    thread_context = context.user_data.get("_thread_context")
+    thread_context = _ud(context).get("_thread_context")
     if not thread_context:
         return None
     return Path(thread_context["project_root"]).resolve()
@@ -37,10 +48,12 @@ def _get_thread_project_root(settings: Settings, context: ContextTypes.DEFAULT_T
 async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Route callback queries to appropriate handlers."""
     query = update.callback_query
+    assert query is not None
     await query.answer()  # Acknowledge the callback
 
+    assert query.from_user is not None
     user_id = query.from_user.id
-    data = query.data
+    data = query.data or ""
 
     logger.info("Processing callback query", user_id=user_id, callback_data=data)
 
@@ -91,28 +104,30 @@ async def handle_callback_query(update: Update, context: ContextTypes.DEFAULT_TY
             )
         except Exception:
             # If we can't edit the message, send a new one
-            await query.message.reply_text(
-                "❌ <b>Error Processing Action</b>\n\nAn error occurred while processing your request.",
-                parse_mode="HTML",
-            )
+            if query.message:
+                await query.message.reply_text(  # type: ignore[union-attr]
+                    "❌ <b>Error Processing Action</b>\n\nAn error occurred while processing your request.",
+                    parse_mode="HTML",
+                )
 
 
 async def handle_cd_callback(query, project_name: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle directory change from inline keyboard."""
     user_id = query.from_user.id
-    settings: Settings = context.bot_data["settings"]
-    security_validator: SecurityValidator = context.bot_data.get("security_validator")
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
-    claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
+    settings: Settings = _bd(context)["settings"]
+    security_validator: SecurityValidator | None = _bd(context).get("security_validator")
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
+    claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
 
     try:
-        current_dir = context.user_data.get("current_directory", settings.approved_directory)
+        current_dir_raw = _ud(context).get("current_directory", settings.approved_directory)
+        current_dir: Path = current_dir_raw if isinstance(current_dir_raw, Path) else settings.approved_directory
         project_root = _get_thread_project_root(settings, context)
         directory_root = project_root or settings.approved_directory
 
         # Handle special paths
         if project_name == "/":
-            new_path = directory_root
+            new_path: Path = directory_root
         elif project_name == "..":
             new_path = current_dir.parent
             if not _is_within_root(new_path, directory_root):
@@ -129,11 +144,12 @@ async def handle_cd_callback(query, project_name: str, context: ContextTypes.DEF
             valid, resolved_path, error = security_validator.validate_path(str(new_path), settings.approved_directory)
             if not valid:
                 await query.edit_message_text(
-                    f"❌ <b>Access Denied</b>\n\n{escape_html(error)}",
+                    f"❌ <b>Access Denied</b>\n\n{escape_html(error or '')}",
                     parse_mode="HTML",
                 )
                 return
             # Use the validated path
+            assert resolved_path is not None
             new_path = resolved_path
 
         if project_root and not _is_within_root(new_path, project_root):
@@ -153,22 +169,22 @@ async def handle_cd_callback(query, project_name: str, context: ContextTypes.DEF
             return
 
         # Update directory and resume session for that directory when available
-        context.user_data["current_directory"] = new_path
+        _ud(context)["current_directory"] = new_path
 
         resumed_session_info = ""
         if claude_integration:
             existing_session = await claude_integration._find_resumable_session(user_id, new_path)
             if existing_session:
-                context.user_data["claude_session_id"] = existing_session.session_id
+                _ud(context)["claude_session_id"] = existing_session.session_id
                 resumed_session_info = (
                     f"\n🔄 Resumed session <code>{escape_html(existing_session.session_id[:8])}...</code> "
                     f"({existing_session.message_count} messages)"
                 )
             else:
-                context.user_data["claude_session_id"] = None
+                _ud(context)["claude_session_id"] = None
                 resumed_session_info = "\n🆕 No existing session. Send a message to start a new one."
         else:
-            context.user_data["claude_session_id"] = None
+            _ud(context)["claude_session_id"] = None
             resumed_session_info = "\n🆕 Send a message to start a new session."
 
         # Send confirmation with new directory info
@@ -291,11 +307,11 @@ async def _handle_help_action(query, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def _handle_show_projects_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle show projects action."""
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     try:
         if settings.enable_project_threads:
-            registry = context.bot_data.get("project_registry")
+            registry = _bd(context).get("project_registry")
             if not registry:
                 await query.edit_message_text(
                     "❌ <b>Project registry is not initialized.</b>",
@@ -374,13 +390,13 @@ async def _handle_show_projects_action(query, context: ContextTypes.DEFAULT_TYPE
 
 async def _handle_new_session_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle new session action."""
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Clear session
-    context.user_data["claude_session_id"] = None
-    context.user_data["session_started"] = True
+    _ud(context)["claude_session_id"] = None
+    _ud(context)["session_started"] = True
 
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     keyboard = [
@@ -406,10 +422,10 @@ async def _handle_new_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
 
 async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle end session action."""
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Check if there's an active session
-    claude_session_id = context.user_data.get("claude_session_id")
+    claude_session_id = _ud(context).get("claude_session_id")
 
     if not claude_session_id:
         await query.edit_message_text(
@@ -430,13 +446,13 @@ async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
         return
 
     # Get current directory for display
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Clear session data
-    context.user_data["claude_session_id"] = None
-    context.user_data["session_started"] = False
-    context.user_data["last_message"] = None
+    _ud(context)["claude_session_id"] = None
+    _ud(context)["session_started"] = False
+    _ud(context)["last_message"] = None
 
     # Create quick action buttons
     keyboard = [
@@ -470,10 +486,10 @@ async def _handle_end_session_action(query, context: ContextTypes.DEFAULT_TYPE) 
 async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle continue session action."""
     user_id = query.from_user.id
-    settings: Settings = context.bot_data["settings"]
-    claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
+    settings: Settings = _bd(context)["settings"]
+    claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
 
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         if not claude_integration:
@@ -484,7 +500,7 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
             return
 
         # Check if there's an existing session in user context
-        claude_session_id = context.user_data.get("claude_session_id")
+        claude_session_id = _ud(context).get("claude_session_id")
 
         if claude_session_id:
             # Continue with the existing session (no prompt = use --continue)
@@ -515,9 +531,9 @@ async def _handle_continue_action(query, context: ContextTypes.DEFAULT_TYPE) -> 
                 prompt=None,  # No prompt = use --continue
             )
 
-        if claude_response:
+        if claude_response and query.message:
             # Update session ID in context
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             # Send Claude's response
             await query.message.reply_text(
@@ -563,14 +579,14 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
     """Handle status action."""
     # This essentially duplicates the /status command functionality
     user_id = query.from_user.id
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
-    claude_session_id = context.user_data.get("claude_session_id")
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    claude_session_id = _ud(context).get("claude_session_id")
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Get usage info if rate limiter is available
-    rate_limiter = context.bot_data.get("rate_limiter")
+    rate_limiter = _bd(context).get("rate_limiter")
     usage_info = ""
     if rate_limiter:
         try:
@@ -626,8 +642,8 @@ async def _handle_status_action(query, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def _handle_ls_action(query, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle ls action."""
-    settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    settings: Settings = _bd(context)["settings"]
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         # List directory contents (similar to /ls command)
@@ -769,7 +785,7 @@ async def handle_quick_action_callback(query, action_id: str, context: ContextTy
     user_id = query.from_user.id
 
     # Get quick actions manager from bot data if available
-    quick_actions = context.bot_data.get("quick_actions")
+    quick_actions = _bd(context).get("quick_actions")
 
     if not quick_actions:
         await query.edit_message_text(
@@ -779,7 +795,7 @@ async def handle_quick_action_callback(query, action_id: str, context: ContextTy
         return
 
     # Get Claude integration
-    claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
+    claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
     if not claude_integration:
         await query.edit_message_text(
             "❌ <b>Claude Integration Not Available</b>\n\nClaude integration is not properly configured.",
@@ -787,8 +803,8 @@ async def handle_quick_action_callback(query, action_id: str, context: ContextTy
         )
         return
 
-    settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    settings: Settings = _bd(context)["settings"]
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         # Get the action from the manager
@@ -814,7 +830,7 @@ async def handle_quick_action_callback(query, action_id: str, context: ContextTy
             prompt=action.prompt, working_directory=current_dir, user_id=user_id
         )
 
-        if claude_response:
+        if claude_response and query.message:
             # Format and send the response
             response_text = escape_html(claude_response.content)
             if len(response_text) > 4000:
@@ -844,7 +860,7 @@ async def handle_followup_callback(query, suggestion_hash: str, context: Context
     user_id = query.from_user.id
 
     # Get conversation enhancer from bot data if available
-    conversation_enhancer = context.bot_data.get("conversation_enhancer")
+    conversation_enhancer = _bd(context).get("conversation_enhancer")
 
     if not conversation_enhancer:
         await query.edit_message_text(
@@ -890,7 +906,7 @@ async def handle_followup_callback(query, suggestion_hash: str, context: Context
 async def handle_conversation_callback(query, action_type: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle conversation control callbacks."""
     user_id = query.from_user.id
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     if action_type == "continue":
         # Remove suggestion buttons and show continue message
@@ -909,15 +925,15 @@ async def handle_conversation_callback(query, action_type: str, context: Context
 
     elif action_type == "end":
         # End the current session
-        conversation_enhancer = context.bot_data.get("conversation_enhancer")
+        conversation_enhancer = _bd(context).get("conversation_enhancer")
         if conversation_enhancer:
             conversation_enhancer.clear_context(user_id)
 
         # Clear session data
-        context.user_data["claude_session_id"] = None
-        context.user_data["session_started"] = False
+        _ud(context)["claude_session_id"] = None
+        _ud(context)["session_started"] = False
 
-        current_dir = context.user_data.get("current_directory", settings.approved_directory)
+        current_dir = _ud(context).get("current_directory", settings.approved_directory)
         relative_path = current_dir.relative_to(settings.approved_directory)
 
         # Create quick action buttons
@@ -961,8 +977,8 @@ async def handle_conversation_callback(query, action_type: str, context: Context
 async def handle_git_callback(query, git_action: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle git-related callbacks."""
     user_id = query.from_user.id
-    settings: Settings = context.bot_data["settings"]
-    features = context.bot_data.get("features")
+    settings: Settings = _bd(context)["settings"]
+    features = _bd(context).get("features")
 
     if not features or not features.is_enabled("git"):
         await query.edit_message_text(
@@ -971,7 +987,7 @@ async def handle_git_callback(query, git_action: str, context: ContextTypes.DEFA
         )
         return
 
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         git_integration = features.get_git_integration()
@@ -1077,7 +1093,7 @@ async def handle_git_callback(query, git_action: str, context: ContextTypes.DEFA
 async def handle_export_callback(query, export_format: str, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle export format selection callbacks."""
     user_id = query.from_user.id
-    features = context.bot_data.get("features")
+    features = _bd(context).get("features")
 
     if export_format == "cancel":
         await query.edit_message_text(
@@ -1095,7 +1111,7 @@ async def handle_export_callback(query, export_format: str, context: ContextType
         return
 
     # Get current session
-    claude_session_id = context.user_data.get("claude_session_id")
+    claude_session_id = _ud(context).get("claude_session_id")
     if not claude_session_id:
         await query.edit_message_text(
             "❌ <b>No Active Session</b>\n\nThere's no active session to export.",
@@ -1119,6 +1135,7 @@ async def handle_export_callback(query, export_format: str, context: ContextType
         file_bytes = BytesIO(exported_session.content.encode("utf-8"))
         file_bytes.name = exported_session.filename
 
+        assert query.message is not None
         await query.message.reply_document(
             document=file_bytes,
             filename=exported_session.filename,
@@ -1147,13 +1164,14 @@ async def handle_export_callback(query, export_format: str, context: ContextType
         )
 
 
-def _format_file_size(size: int) -> str:
+def _format_file_size(size: int | float) -> str:
     """Format file size in human-readable format."""
+    fsize = float(size)
     for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f}{unit}" if unit != "B" else f"{size}B"
-        size /= 1024
-    return f"{size:.1f}TB"
+        if fsize < 1024:
+            return f"{fsize:.1f}{unit}" if unit != "B" else f"{int(fsize)}B"
+        fsize /= 1024
+    return f"{fsize:.1f}TB"
 
 
 def _escape_markdown(text: str) -> str:

@@ -1,6 +1,7 @@
 """Command handlers for bot operations."""
 
 from pathlib import Path
+from typing import Any, cast
 
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -16,6 +17,16 @@ from ..utils.html_format import escape_html
 logger = structlog.get_logger()
 
 
+def _bd(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get bot_data as typed dict."""
+    return cast(dict[str, Any], context.bot_data)
+
+
+def _ud(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
+    """Get user_data as typed dict."""
+    return cast(dict[str, Any], context.user_data)
+
+
 def _is_within_root(path: Path, root: Path) -> bool:
     """Check whether path is within root directory."""
     try:
@@ -29,10 +40,10 @@ def _get_thread_project_root(settings: Settings, context: ContextTypes.DEFAULT_T
     """Get thread project root when strict thread mode is active."""
     if not settings.enable_project_threads:
         return None
-    thread_context = context.user_data.get("_thread_context")
-    if not thread_context:
+    thread_ctx = _ud(context).get("_thread_context")
+    if not thread_ctx:
         return None
-    return Path(thread_context["project_root"]).resolve()
+    return Path(thread_ctx["project_root"]).resolve()
 
 
 def _is_private_chat(update: Update) -> bool:
@@ -43,10 +54,12 @@ def _is_private_chat(update: Update) -> bool:
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /start command."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user = update.effective_user
-    settings: Settings = context.bot_data["settings"]
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
-    manager = context.bot_data.get("project_threads_manager")
+    settings: Settings = _bd(context)["settings"]
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
+    manager = _bd(context).get("project_threads_manager")
     sync_section = ""
 
     if settings.enable_project_threads and settings.project_threads_mode == "private":
@@ -65,6 +78,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             )
             return
 
+        assert update.effective_chat is not None
         try:
             sync_result = await manager.sync_topics(
                 context.bot,
@@ -139,6 +153,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /help command."""
+    assert update.message is not None
     help_text = (
         "🤖 <b>Claude Code Telegram Bot Help</b>\n\n"
         "<b>Navigation Commands:</b>\n"
@@ -186,15 +201,17 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Synchronize project topics in the configured forum chat."""
-    settings: Settings = context.bot_data["settings"]
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
+    assert update.message is not None
+    assert update.effective_user is not None
+    settings: Settings = _bd(context)["settings"]
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
     user_id = update.effective_user.id
 
     if not settings.enable_project_threads:
         await update.message.reply_text("ℹ️ <b>Project thread mode is disabled.</b>", parse_mode="HTML")
         return
 
-    manager = context.bot_data.get("project_threads_manager")
+    manager = _bd(context).get("project_threads_manager")
     if not manager:
         await update.message.reply_text("❌ <b>Project thread manager not initialized.</b>", parse_mode="HTML")
         return
@@ -208,6 +225,7 @@ async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
                 parse_mode="HTML",
             )
             return
+        assert update.effective_chat is not None
         target_chat_id = update.effective_chat.id
     else:
         if settings.project_threads_chat_id is None:
@@ -241,7 +259,7 @@ async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             approved_directory=settings.approved_directory,
         )
         manager.registry = registry
-        context.bot_data["project_registry"] = registry
+        _bd(context)["project_registry"] = registry
 
         result = await manager.sync_topics(context.bot, chat_id=target_chat_id)
         await status_msg.edit_text(
@@ -275,19 +293,21 @@ async def sync_threads(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 async def new_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /new command - explicitly starts a fresh session, clearing previous context."""
-    settings: Settings = context.bot_data["settings"]
+    assert update.message is not None
+    assert update.effective_user is not None
+    settings: Settings = _bd(context)["settings"]
 
     # Get current directory (default to approved directory)
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Track what was cleared for user feedback
-    old_session_id = context.user_data.get("claude_session_id")
+    old_session_id = _ud(context).get("claude_session_id")
 
     # Clear existing session data - this is the explicit way to reset context
-    context.user_data["claude_session_id"] = None
-    context.user_data["session_started"] = True
-    context.user_data["force_new_session"] = True
+    _ud(context)["claude_session_id"] = None
+    _ud(context)["session_started"] = True
+    _ud(context)["force_new_session"] = True
 
     cleared_info = ""
     if old_session_id:
@@ -317,17 +337,19 @@ async def new_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /continue command with optional prompt."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
-    claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
+    settings: Settings = _bd(context)["settings"]
+    claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
 
     # Parse optional prompt from command arguments
     # If no prompt provided, use a default to continue the conversation
     prompt = " ".join(context.args) if context.args else None
     default_prompt = "Please continue where we left off"
 
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         if not claude_integration:
@@ -337,7 +359,7 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         # Check if there's an existing session in user context
-        claude_session_id = context.user_data.get("claude_session_id")
+        claude_session_id = _ud(context).get("claude_session_id")
 
         if claude_session_id:
             # We have a session in context, continue it directly
@@ -373,7 +395,7 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
         if claude_response:
             # Update session ID in context
-            context.user_data["claude_session_id"] = claude_response.session_id
+            _ud(context)["claude_session_id"] = claude_response.session_id
 
             # Delete status message and send response
             await status_msg.delete()
@@ -456,12 +478,14 @@ async def continue_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def list_files(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /ls command."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
+    settings: Settings = _bd(context)["settings"]
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
 
     # Get current directory
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         # List directory contents
@@ -545,10 +569,12 @@ async def list_files(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 
 async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /cd command."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
-    security_validator: SecurityValidator = context.bot_data.get("security_validator")
-    audit_logger: AuditLogger = context.bot_data.get("audit_logger")
+    settings: Settings = _bd(context)["settings"]
+    security_validator: SecurityValidator | None = _bd(context).get("security_validator")
+    audit_logger: AuditLogger | None = _bd(context).get("audit_logger")
 
     # Parse arguments
     if not context.args:
@@ -566,14 +592,15 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         return
 
     target_path = " ".join(context.args)
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir_raw = _ud(context).get("current_directory", settings.approved_directory)
+    current_dir: Path = current_dir_raw if isinstance(current_dir_raw, Path) else settings.approved_directory
     project_root = _get_thread_project_root(settings, context)
     directory_root = project_root or settings.approved_directory
 
     try:
         # Handle known navigation shortcuts first
         if target_path == "/":
-            resolved_path = directory_root
+            resolved_path: Path = directory_root
         elif target_path == "..":
             resolved_path = current_dir.parent
             if not _is_within_root(resolved_path, directory_root):
@@ -581,10 +608,10 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
         else:
             # Validate path using security validator
             if security_validator:
-                valid, resolved_path, error = security_validator.validate_path(target_path, current_dir)
+                valid, validated_path, error = security_validator.validate_path(target_path, current_dir)
 
                 if not valid:
-                    await update.message.reply_text(f"❌ <b>Access Denied</b>\n\n{error}")
+                    await update.message.reply_text(f"❌ <b>Access Denied</b>\n\n{error or ''}")
 
                     # Log security violation
                     if audit_logger:
@@ -595,9 +622,10 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
                             severity="medium",
                         )
                     return
+                assert validated_path is not None
+                resolved_path = validated_path
             else:
-                resolved_path = current_dir / target_path
-                resolved_path = resolved_path.resolve()
+                resolved_path = (current_dir / target_path).resolve()
 
         if project_root and not _is_within_root(resolved_path, project_root):
             await update.message.reply_text(
@@ -620,22 +648,22 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             return
 
         # Update current directory in user data
-        context.user_data["current_directory"] = resolved_path
+        _ud(context)["current_directory"] = resolved_path
 
         # Look up existing session for the new directory instead of clearing
-        claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
+        claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
         resumed_session_info = ""
         if claude_integration:
             existing_session = await claude_integration._find_resumable_session(user_id, resolved_path)
             if existing_session:
-                context.user_data["claude_session_id"] = existing_session.session_id
+                _ud(context)["claude_session_id"] = existing_session.session_id
                 resumed_session_info = (
                     f"\n🔄 Resumed session <code>{existing_session.session_id[:8]}...</code> "
                     f"({existing_session.message_count} messages)"
                 )
             else:
                 # No session for this directory - clear the current one
-                context.user_data["claude_session_id"] = None
+                _ud(context)["claude_session_id"] = None
                 resumed_session_info = "\n🆕 No existing session. Send a message to start a new one."
 
         # Send confirmation
@@ -666,8 +694,9 @@ async def change_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 async def print_working_directory(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /pwd command."""
-    settings: Settings = context.bot_data["settings"]
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    assert update.message is not None
+    settings: Settings = _bd(context)["settings"]
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     relative_path = current_dir.relative_to(settings.approved_directory)
     absolute_path = str(current_dir)
@@ -692,12 +721,13 @@ async def print_working_directory(update: Update, context: ContextTypes.DEFAULT_
 
 async def show_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /projects command."""
-    settings: Settings = context.bot_data["settings"]
+    assert update.message is not None
+    settings: Settings = _bd(context)["settings"]
 
     try:
         if settings.enable_project_threads:
-            registry = context.bot_data.get("project_registry")
-            manager = context.bot_data.get("project_threads_manager")
+            registry = _bd(context).get("project_registry")
+            manager = _bd(context).get("project_threads_manager")
             if manager and getattr(manager, "registry", None):
                 registry = manager.registry
             if not registry:
@@ -779,16 +809,18 @@ async def show_projects(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /status command."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Get session info
-    claude_session_id = context.user_data.get("claude_session_id")
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    claude_session_id = _ud(context).get("claude_session_id")
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Get rate limiter info if available
-    rate_limiter = context.bot_data.get("rate_limiter")
+    rate_limiter = _bd(context).get("rate_limiter")
     usage_info = ""
     if rate_limiter:
         try:
@@ -805,7 +837,7 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
     # Check if there's a resumable session from the database
     resumable_info = ""
     if not claude_session_id:
-        claude_integration: ClaudeIntegration = context.bot_data.get("claude_integration")
+        claude_integration: ClaudeIntegration | None = _bd(context).get("claude_integration")
         if claude_integration:
             existing = await claude_integration._find_resumable_session(user_id, current_dir)
             if existing:
@@ -855,8 +887,9 @@ async def session_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def export_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /export command."""
-    update.effective_user.id
-    features = context.bot_data.get("features")
+    assert update.message is not None
+    assert update.effective_user is not None
+    features = _bd(context).get("features")
 
     # Check if session export is available
     session_exporter = features.get_session_export() if features else None
@@ -874,7 +907,7 @@ async def export_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     # Get current session
-    claude_session_id = context.user_data.get("claude_session_id")
+    claude_session_id = _ud(context).get("claude_session_id")
 
     if not claude_session_id:
         await update.message.reply_text(
@@ -911,11 +944,13 @@ async def export_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
 
 async def end_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /end command to terminate the current session."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
+    settings: Settings = _bd(context)["settings"]
 
     # Check if there's an active session
-    claude_session_id = context.user_data.get("claude_session_id")
+    claude_session_id = _ud(context).get("claude_session_id")
 
     if not claude_session_id:
         await update.message.reply_text(
@@ -929,13 +964,13 @@ async def end_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # Get current directory for display
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
     relative_path = current_dir.relative_to(settings.approved_directory)
 
     # Clear session data
-    context.user_data["claude_session_id"] = None
-    context.user_data["session_started"] = False
-    context.user_data["last_message"] = None
+    _ud(context)["claude_session_id"] = None
+    _ud(context)["session_started"] = False
+    _ud(context)["last_message"] = None
 
     # Create quick action buttons
     keyboard = [
@@ -970,9 +1005,11 @@ async def end_session(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 async def quick_actions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /actions command to show quick actions."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
-    features = context.bot_data.get("features")
+    settings: Settings = _bd(context)["settings"]
+    features = _bd(context).get("features")
 
     if not features or not features.is_enabled("quick_actions"):
         await update.message.reply_text(
@@ -983,7 +1020,7 @@ async def quick_actions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     # Get current directory
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         quick_action_manager = features.get_quick_actions()
@@ -1026,9 +1063,11 @@ async def quick_actions(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle /git command to show git repository information."""
+    assert update.message is not None
+    assert update.effective_user is not None
     user_id = update.effective_user.id
-    settings: Settings = context.bot_data["settings"]
-    features = context.bot_data.get("features")
+    settings: Settings = _bd(context)["settings"]
+    features = _bd(context).get("features")
 
     if not features or not features.is_enabled("git"):
         await update.message.reply_text(
@@ -1039,7 +1078,7 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     # Get current directory
-    current_dir = context.user_data.get("current_directory", settings.approved_directory)
+    current_dir = _ud(context).get("current_directory", settings.approved_directory)
 
     try:
         git_integration = features.get_git_integration()
@@ -1111,13 +1150,14 @@ async def git_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         logger.error("Error in git_command", error=str(e), user_id=user_id)
 
 
-def _format_file_size(size: int) -> str:
+def _format_file_size(size: int | float) -> str:
     """Format file size in human-readable format."""
+    fsize = float(size)
     for unit in ["B", "KB", "MB", "GB"]:
-        if size < 1024:
-            return f"{size:.1f}{unit}" if unit != "B" else f"{size}B"
-        size /= 1024
-    return f"{size:.1f}TB"
+        if fsize < 1024:
+            return f"{fsize:.1f}{unit}" if unit != "B" else f"{int(fsize)}B"
+        fsize /= 1024
+    return f"{fsize:.1f}TB"
 
 
 def _escape_markdown(text: str) -> str:

@@ -8,6 +8,7 @@ Features:
 
 import json
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -388,7 +389,7 @@ class MessageRepository:
                 ),
             )
             await conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
 
     async def get_session_messages(self, session_id: str, limit: int = 50) -> list[MessageModel]:
         """Get messages for session."""
@@ -465,7 +466,7 @@ class ToolUsageRepository:
                 ),
             )
             await conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
 
     async def get_session_tool_usage(self, session_id: str) -> list[ToolUsageModel]:
         """Get tool usage for session."""
@@ -496,7 +497,7 @@ class ToolUsageRepository:
             rows = await cursor.fetchall()
             return [ToolUsageModel.from_row(row) for row in rows]
 
-    async def get_tool_stats(self) -> list[dict[str, any]]:
+    async def get_tool_stats(self) -> list[dict[str, Any]]:
         """Get tool usage statistics."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -544,7 +545,7 @@ class AuditLogRepository:
                 ),
             )
             await conn.commit()
-            return cursor.lastrowid
+            return cursor.lastrowid or 0
 
     async def get_user_audit_log(self, user_id: int, limit: int = 100) -> list[AuditLogModel]:
         """Get audit log for user."""
@@ -583,7 +584,7 @@ class CostTrackingRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def update_daily_cost(self, user_id: int, cost: float, date: str = None):
+    async def update_daily_cost(self, user_id: int, cost: float, date: str | None = None):
         """Update daily cost for user."""
         if not date:
             date = datetime.now(UTC).strftime("%Y-%m-%d")
@@ -616,7 +617,7 @@ class CostTrackingRepository:
             rows = await cursor.fetchall()
             return [CostTrackingModel.from_row(row) for row in rows]
 
-    async def get_total_costs(self, days: int = 30) -> list[dict[str, any]]:
+    async def get_total_costs(self, days: int = 30) -> list[dict[str, Any]]:
         """Get total costs by day."""
         async with self.db.get_connection() as conn:
             cursor = await conn.execute(
@@ -644,7 +645,7 @@ class AnalyticsRepository:
         """Initialize repository."""
         self.db = db_manager
 
-    async def get_user_stats(self, user_id: int) -> dict[str, any]:
+    async def get_user_stats(self, user_id: int) -> dict[str, Any]:
         """Get user statistics."""
         async with self.db.get_connection() as conn:
             # User summary
@@ -663,7 +664,8 @@ class AnalyticsRepository:
                 (user_id,),
             )
 
-            summary = dict(await cursor.fetchone())
+            row = await cursor.fetchone()
+            summary: dict[str, Any] = dict(row) if row else {}
 
             # Daily usage (last 30 days)
             cursor = await conn.execute(
@@ -707,7 +709,7 @@ class AnalyticsRepository:
                 "top_tools": top_tools,
             }
 
-    async def get_system_stats(self) -> dict[str, any]:
+    async def get_system_stats(self) -> dict[str, Any]:
         """Get system-wide statistics."""
         async with self.db.get_connection() as conn:
             # Overall stats
@@ -723,7 +725,8 @@ class AnalyticsRepository:
             """
             )
 
-            overall = dict(await cursor.fetchone())
+            overall_row = await cursor.fetchone()
+            overall: dict[str, Any] = dict(overall_row) if overall_row else {}
 
             # Active users (last 7 days)
             cursor = await conn.execute(
@@ -734,7 +737,8 @@ class AnalyticsRepository:
             """
             )
 
-            active_users = (await cursor.fetchone())[0]
+            active_row = await cursor.fetchone()
+            active_users = active_row[0] if active_row else 0
             overall["active_users_7d"] = active_users
 
             # Top users by cost

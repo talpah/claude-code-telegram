@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from enum import Enum
 
 from src.storage.facade import Storage
+from src.storage.models import MessageModel, SessionModel
 from src.utils.constants import MAX_SESSION_LENGTH
 
 
@@ -60,12 +61,12 @@ class SessionExporter:
             ValueError: If session not found or invalid format
         """
         # Get session data
-        session = await self.storage.get_session(user_id, session_id)
+        session = await self.storage.sessions.get_session(session_id)
         if not session:
             raise ValueError(f"Session {session_id} not found")
 
         # Get session messages
-        messages = await self.storage.get_session_messages(session_id, limit=MAX_SESSION_LENGTH)
+        messages = await self.storage.messages.get_session_messages(session_id, MAX_SESSION_LENGTH)
 
         # Export based on format
         if format == ExportFormat.MARKDOWN:
@@ -84,8 +85,8 @@ class SessionExporter:
             raise ValueError(f"Unsupported export format: {format}")
 
         # Create filename
-        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        filename = f"session_{session_id[:8]}_{timestamp}.{extension}"
+        ts = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+        filename = f"session_{session_id[:8]}_{ts}.{extension}"
 
         return ExportedSession(
             format=format,
@@ -96,7 +97,7 @@ class SessionExporter:
             created_at=datetime.now(UTC),
         )
 
-    async def _export_markdown(self, session: dict, messages: list) -> str:
+    async def _export_markdown(self, session: SessionModel, messages: list[MessageModel]) -> str:
         """Export session as Markdown.
 
         Args:
@@ -110,26 +111,26 @@ class SessionExporter:
 
         # Header
         lines.append("# Claude Code Session Export")
-        lines.append(f"\n**Session ID:** `{session['id']}`")
-        lines.append(f"**Created:** {session['created_at']}")
-        if session.get("updated_at"):
-            lines.append(f"**Last Updated:** {session['updated_at']}")
+        lines.append(f"\n**Session ID:** `{session.session_id}`")
+        lines.append(f"**Created:** {session.created_at}")
+        lines.append(f"**Last Used:** {session.last_used}")
         lines.append(f"**Message Count:** {len(messages)}")
         lines.append("\n---\n")
 
-        # Messages
+        # Messages - each MessageModel is one user+Claude exchange
         for msg in messages:
-            timestamp = msg["created_at"]
-            role = "You" if msg["role"] == "user" else "Claude"
-            content = msg["content"]
-
-            lines.append(f"### {role} - {timestamp}")
-            lines.append(f"\n{content}\n")
+            timestamp = msg.timestamp
+            lines.append(f"### You - {timestamp}")
+            lines.append(f"\n{msg.prompt}\n")
             lines.append("---\n")
+            if msg.response:
+                lines.append(f"### Claude - {timestamp}")
+                lines.append(f"\n{msg.response}\n")
+                lines.append("---\n")
 
         return "\n".join(lines)
 
-    async def _export_json(self, session: dict, messages: list) -> str:
+    async def _export_json(self, session: SessionModel, messages: list[MessageModel]) -> str:
         """Export session as JSON.
 
         Args:
@@ -141,18 +142,18 @@ class SessionExporter:
         """
         export_data = {
             "session": {
-                "id": session["id"],
-                "user_id": session["user_id"],
-                "created_at": session["created_at"].isoformat(),
-                "updated_at": (session.get("updated_at", "").isoformat() if session.get("updated_at") else None),
+                "id": session.session_id,
+                "user_id": session.user_id,
+                "created_at": session.created_at.isoformat(),
+                "last_used": session.last_used.isoformat(),
                 "message_count": len(messages),
             },
             "messages": [
                 {
-                    "id": msg["id"],
-                    "role": msg["role"],
-                    "content": msg["content"],
-                    "created_at": msg["created_at"].isoformat(),
+                    "id": msg.message_id,
+                    "prompt": msg.prompt,
+                    "response": msg.response,
+                    "timestamp": msg.timestamp.isoformat(),
                 }
                 for msg in messages
             ],
@@ -160,7 +161,7 @@ class SessionExporter:
 
         return json.dumps(export_data, indent=2, ensure_ascii=False)
 
-    async def _export_html(self, session: dict, messages: list) -> str:
+    async def _export_html(self, session: SessionModel, messages: list[MessageModel]) -> str:
         """Export session as HTML.
 
         Args:
@@ -180,7 +181,7 @@ class SessionExporter:
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Code Session - {session["id"][:8]}</title>
+    <title>Claude Code Session - {session.session_id[:8]}</title>
     <style>
         body {{
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

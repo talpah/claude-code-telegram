@@ -9,9 +9,9 @@ from typing import Any
 
 import structlog
 from apscheduler.schedulers.asyncio import (
-    AsyncIOScheduler,  # type: ignore[import-untyped]
+    AsyncIOScheduler,
 )
-from apscheduler.triggers.cron import CronTrigger  # type: ignore[import-untyped]
+from apscheduler.triggers.cron import CronTrigger
 
 from ..events.bus import EventBus
 from ..events.types import ScheduledEvent

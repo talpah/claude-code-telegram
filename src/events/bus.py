@@ -59,7 +59,7 @@ class EventBus:
         logger.debug(
             "Handler subscribed",
             event_type=event_type.__name__,
-            handler=handler.__qualname__,
+            handler=getattr(handler, "__qualname__", repr(handler)),
         )
 
     def subscribe_all(self, handler: EventHandler) -> None:
@@ -137,7 +137,7 @@ class EventBus:
                     "Event handler failed",
                     event_type=event.event_type,
                     event_id=event.id,
-                    handler=handlers[i].__qualname__,
+                    handler=getattr(handlers[i], "__qualname__", repr(handlers[i])),
                     error=str(result),
                 )
 
@@ -148,7 +148,7 @@ class EventBus:
         except Exception:
             logger.exception(
                 "Unhandled error in event handler",
-                handler=handler.__qualname__,
+                handler=getattr(handler, "__qualname__", repr(handler)),
                 event_type=event.event_type,
             )
             raise

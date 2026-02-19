@@ -46,7 +46,7 @@ def markdown_to_telegram_html(text: str) -> str:
         return key
 
     # --- 1. Extract fenced code blocks ---
-    def _replace_fenced(m: re.Match) -> str:  # type: ignore[type-arg]
+    def _replace_fenced(m: re.Match) -> str:
         lang = m.group(1) or ""
         code = m.group(2)
         escaped_code = escape_html(code)
@@ -64,7 +64,7 @@ def markdown_to_telegram_html(text: str) -> str:
     )
 
     # --- 2. Extract inline code ---
-    def _replace_inline_code(m: re.Match) -> str:  # type: ignore[type-arg]
+    def _replace_inline_code(m: re.Match) -> str:
         code = m.group(1)
         escaped_code = escape_html(code)
         return _make_placeholder(f"<code>{escaped_code}</code>")

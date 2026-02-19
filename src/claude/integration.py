@@ -66,13 +66,13 @@ class StreamUpdate:
 
     def is_error(self) -> bool:
         """Check if this update represents an error."""
-        return self.type == "error" or (self.metadata and self.metadata.get("is_error", False))
+        return bool(self.type == "error" or (self.metadata and self.metadata.get("is_error", False)))
 
     def get_tool_names(self) -> list[str]:
         """Extract tool names from tool calls."""
         if not self.tool_calls:
             return []
-        return [call.get("name") for call in self.tool_calls if call.get("name")]
+        return [name for call in self.tool_calls if (name := call.get("name")) is not None]
 
     def get_progress_percentage(self) -> int | None:
         """Get progress percentage if available."""
@@ -271,6 +271,7 @@ class ClaudeProcessManager:
         return_code = await process.wait()
 
         if return_code != 0:
+            assert process.stderr is not None
             stderr = await process.stderr.read()
             error_msg = stderr.decode("utf-8", errors="replace")
             logger.error(
