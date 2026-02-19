@@ -295,6 +295,9 @@ class MessageOrchestrator:
             ("status", self.agentic_status),
             ("verbose", self.agentic_verbose),
             ("repo", self.agentic_repo),
+            ("memory", self.agentic_memory),
+            ("model", self.agentic_model),
+            ("reload", self.agentic_reload),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -392,6 +395,9 @@ class MessageOrchestrator:
                 BotCommand("status", "Show session status"),
                 BotCommand("verbose", "Set output verbosity (0/1/2)"),
                 BotCommand("repo", "List repos / switch workspace"),
+                BotCommand("memory", "Show Claude's memory about you"),
+                BotCommand("model", "Show or change Claude model"),
+                BotCommand("reload", "Restart the bot process"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -456,7 +462,7 @@ class MessageOrchestrator:
             f"Hi {safe_name}! I'm your AI coding assistant.\n"
             f"Just tell me what you need — I can read, write, and run code.\n\n"
             f"Working in: {dir_display}\n"
-            f"Commands: /new (reset) · /status"
+            f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload"
             f"{sync_line}",
             parse_mode="HTML",
         )
@@ -1068,6 +1074,136 @@ class MessageOrchestrator:
 
             await progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
             logger.error("Claude photo processing failed", error=str(e), user_id=user_id)
+
+    async def agentic_memory(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Show Claude's persistent memory about the user (facts + active goals)."""
+        assert update.message is not None
+        assert update.effective_user is not None
+        user_id = update.effective_user.id
+
+        memory_manager = _bd(context).get("memory_manager")
+        if not memory_manager:
+            await update.message.reply_text(
+                "Memory is not enabled.\n\n"
+                "Set <code>ENABLE_MEMORY=true</code> in your <code>.env</code> to activate.",
+                parse_mode="HTML",
+            )
+            return
+
+        facts = await memory_manager.get_facts(user_id, limit=20)
+        goals = await memory_manager.get_active_goals(user_id)
+
+        if not facts and not goals:
+            await update.message.reply_text(
+                "No memories yet.\n\n"
+                "Claude stores facts automatically when you share information worth remembering, "
+                "and tracks goals you mention. Just chat normally — it happens in the background.",
+                parse_mode="HTML",
+            )
+            return
+
+        lines: list[str] = ["<b>Claude's memory about you</b>"]
+
+        if facts:
+            lines.append(f"\n<b>Facts</b> ({len(facts)})")
+            for fact in facts:
+                lines.append(f"• {escape_html(fact.content)}")
+
+        if goals:
+            lines.append(f"\n<b>Active Goals</b> ({len(goals)})")
+            for goal in goals:
+                deadline = f" <i>(deadline: {escape_html(goal.deadline)})</i>" if goal.deadline else ""
+                lines.append(f"• {escape_html(goal.content)}{deadline}")
+
+        await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+    # Aliases / short names → full model IDs
+    _MODEL_ALIASES: dict[str, str] = {
+        # Claude 4 family
+        "opus": "claude-opus-4-5",
+        "opus4": "claude-opus-4-5",
+        "opusplan": "claude-opus-4-5",
+        "sonnet": "claude-sonnet-4-5",
+        "sonnet4": "claude-sonnet-4-5",
+        "haiku": "claude-haiku-4-5",
+        "haiku4": "claude-haiku-4-5",
+        # Claude 3 / 3.5 family
+        "opus3": "claude-3-opus-20240229",
+        "sonnet3": "claude-3-5-sonnet-20241022",
+        "haiku3": "claude-3-5-haiku-20241022",
+    }
+
+    async def agentic_model(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """/model [name] — show or change the active Claude model."""
+        assert update.message is not None
+        args = update.message.text.split()[1:] if update.message.text else []
+
+        if not args:
+            current = self.settings.claude_model
+            alias_lines = "\n".join(
+                f"  <code>{alias}</code> → <code>{model}</code>"
+                for alias, model in sorted(self._MODEL_ALIASES.items())
+            )
+            await update.message.reply_text(
+                f"Current model: <code>{escape_html(current)}</code>\n\n"
+                f"Usage: <code>/model &lt;name&gt;</code>\n\n"
+                f"Aliases:\n{alias_lines}\n\n"
+                "Any full model ID (e.g. <code>claude-opus-4-5</code>) is also accepted.",
+                parse_mode="HTML",
+            )
+            return
+
+        raw = args[0].strip().lower()
+        new_model = self._MODEL_ALIASES.get(raw, args[0].strip())
+
+        old_model = self.settings.claude_model
+        if new_model == old_model:
+            await update.message.reply_text(
+                f"Already using <code>{escape_html(new_model)}</code>.",
+                parse_mode="HTML",
+            )
+            return
+
+        self.settings.claude_model = new_model
+        # Reset session — different model = different conversation
+        _ud(context)["claude_session_id"] = None
+        _ud(context)["force_new_session"] = True
+
+        await update.message.reply_text(
+            f"Model changed to <code>{escape_html(new_model)}</code>.\n"
+            "Session reset — the new model will be used on your next message.",
+            parse_mode="HTML",
+        )
+
+        audit_logger = _bd(context).get("audit_logger")
+        if audit_logger and update.effective_user:
+            await audit_logger.log_command(
+                user_id=update.effective_user.id,
+                command="model",
+                args=[new_model],
+                success=True,
+            )
+
+    async def agentic_reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """/reload — restart the bot process in-place to pick up code/config changes."""
+        import os
+        import sys
+
+        assert update.message is not None
+        assert update.effective_user is not None
+
+        audit_logger = _bd(context).get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_command(
+                user_id=update.effective_user.id,
+                command="reload",
+                args=[],
+                success=True,
+            )
+
+        await update.message.reply_text("Restarting bot process...")
+        await asyncio.sleep(0.5)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     async def agentic_repo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List repos in workspace or switch to one.

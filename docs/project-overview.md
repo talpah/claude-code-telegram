@@ -23,9 +23,10 @@ A Telegram bot that provides remote access to Claude Code, allowing developers t
 
 ### Agentic Mode (Default)
 - Natural language conversation with Claude -- no commands needed
-- Minimal command set: `/start`, `/new`, `/status`
+- Commands: `/start`, `/new`, `/status`, `/verbose`, `/repo`, `/memory`, `/model`, `/reload`
 - Automatic session persistence per user/project directory
-- File and image upload support
+- File, image, and voice message support
+- Voice transcription via Groq Whisper API or local whisper.cpp
 
 ### Classic Mode
 - Terminal-like commands (cd, ls, pwd)
@@ -40,8 +41,25 @@ A Telegram bot that provides remote access to Claude Code, allowing developers t
 - **Job Scheduler**: APScheduler cron jobs with persistent storage
 - **Notifications**: Rate-limited Telegram delivery for agent responses
 
+### Semantic Memory
+- Claude automatically extracts `[REMEMBER: ...]` facts and `[GOAL: ...]` goals from responses
+- Hybrid FTS5 full-text + vector cosine similarity search (384-dim sentence-transformers)
+- Memory context injected into every Claude prompt automatically
+- `/memory` command shows stored facts and active goals
+
+### User Profile & Personalization
+- Markdown profile file loaded before every Claude call (mtime-cached)
+- Profile includes preferences, working style, time zone, and goals
+- Template at `config/profile.example.md`
+
+### Proactive Check-ins
+- Claude-driven: Claude decides via a decision prompt whether to reach out
+- Configurable interval, daily cap, and quiet hours
+- Delivered via NotificationService → Telegram
+
 ### Claude Code Integration
 - Full Claude Code SDK integration (CLI fallback)
+- Prompt enrichment: profile + memory context prepended to every request
 - Session management per user/project
 - Tool usage visibility
 - Cost tracking and limits
@@ -60,6 +78,7 @@ A Telegram bot that provides remote access to Claude Code, allowing developers t
 1. **MessageOrchestrator** (`src/bot/orchestrator.py`)
    - Routes to agentic or classic handlers based on mode
    - Dependency injection for all handlers
+   - Handles voice → transcription → Claude pipeline
 
 2. **Configuration** (`src/config/`)
    - Pydantic Settings v2 with environment variables
@@ -71,6 +90,7 @@ A Telegram bot that provides remote access to Claude Code, allowing developers t
 
 4. **Claude Integration** (`src/claude/`)
    - SDK and CLI backends via facade pattern
+   - Prompt enrichment: profile + memory context via `_build_enriched_prompt()`
    - Session state management and auto-resume
 
 5. **Storage Layer** (`src/storage/`)
@@ -93,6 +113,23 @@ A Telegram bot that provides remote access to Claude Code, allowing developers t
 9. **Notifications** (`src/notifications/`)
    - Rate-limited Telegram delivery
    - Message splitting and broadcast support
+
+10. **Memory** (`src/memory/`)
+    - `MemoryManager`: store/search/process memory entries (facts + goals)
+    - `EmbeddingService`: lazy-loaded sentence-transformers for vector search
+    - Hybrid FTS5 + cosine similarity ranking
+
+11. **Profile** (`src/config/profile.py`)
+    - `ProfileManager`: mtime-cached markdown profile loader
+    - Injected as prefix into every Claude prompt
+
+12. **Check-ins** (`src/scheduler/checkin.py`)
+    - `CheckInService`: APScheduler interval job with quiet-hours guard
+    - Claude makes the decision; result delivered via EventBus → NotificationService
+
+13. **Voice** (`src/bot/features/voice_handler.py`)
+    - `VoiceHandler`: OGG transcription via Groq API or local whisper.cpp
+    - ffmpeg converts Telegram OGG to WAV for local provider
 
 ### Data Flow
 

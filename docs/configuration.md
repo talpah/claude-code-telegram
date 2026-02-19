@@ -65,6 +65,9 @@ DISABLE_TOOL_VALIDATION=false
 USE_SDK=true                          # Use Python SDK (default) or CLI subprocess
 ANTHROPIC_API_KEY=sk-ant-api03-...    # Optional: API key for SDK integration
 
+# Model selection (can also be changed at runtime with /model)
+CLAUDE_MODEL=claude-sonnet-4-5        # Default model (passed to SDK as --model)
+
 # Maximum conversation turns before requiring new session
 CLAUDE_MAX_TURNS=10
 
@@ -77,6 +80,19 @@ CLAUDE_MAX_COST_PER_USER=10.0
 # Allowed Claude tools (comma-separated list)
 CLAUDE_ALLOWED_TOOLS=Read,Write,Edit,Bash,Glob,Grep,LS,Task,MultiEdit,NotebookRead,NotebookEdit,WebFetch,TodoRead,TodoWrite,WebSearch
 ```
+
+`/model` accepts full model IDs or short aliases:
+
+| Alias | Full model ID |
+|-------|--------------|
+| `opus` / `opus4` / `opusplan` | `claude-opus-4-5` |
+| `sonnet` / `sonnet4` | `claude-sonnet-4-5` |
+| `haiku` / `haiku4` | `claude-haiku-4-5` |
+| `opus3` | `claude-3-opus-20240229` |
+| `sonnet3` | `claude-3-5-sonnet-20241022` |
+| `haiku3` | `claude-3-5-haiku-20241022` |
+
+Changing the model resets the current session.
 
 #### Rate Limiting
 
@@ -110,7 +126,7 @@ AUDIT_LOG_RETENTION_DAYS=365     # Days to keep audit logs
 
 ```bash
 # Agentic mode (default: true)
-# true = conversational mode with 3 commands (/start, /new, /status)
+# true = conversational mode with 8 commands (/start, /new, /status, /verbose, /repo, /memory, /model, /reload)
 # false = classic terminal mode with 13 commands and inline keyboards
 AGENTIC_MODE=true
 ```
@@ -130,6 +146,80 @@ ENABLE_FILE_UPLOADS=true
 
 # Enable quick action buttons (classic mode)
 ENABLE_QUICK_ACTIONS=true
+```
+
+#### Voice Transcription
+
+```bash
+# Provider: 'groq' (cloud, fast) or 'local' (offline, needs whisper.cpp + ffmpeg)
+VOICE_PROVIDER=groq
+
+# Groq cloud transcription (get key at console.groq.com)
+GROQ_API_KEY=gsk_...
+
+# Local whisper.cpp (only needed when VOICE_PROVIDER=local)
+WHISPER_BINARY=whisper-cpp                      # Path to whisper-cpp binary
+WHISPER_MODEL_PATH=/path/to/ggml-base.en.bin   # Path to model file
+```
+
+#### Semantic Memory
+
+```bash
+# Enable persistent memory (facts + goals extracted from conversations)
+ENABLE_MEMORY=false
+
+# Use sentence-transformers for vector similarity search (384-dim embeddings)
+# Requires: uv pip install sentence-transformers numpy
+ENABLE_MEMORY_EMBEDDINGS=true
+
+# Limits
+MEMORY_MAX_FACTS=50              # Max stored facts per user
+MEMORY_MAX_CONTEXT_ITEMS=10      # Facts/goals injected into each Claude prompt
+```
+
+Claude extracts memory tags from its own responses:
+- `[REMEMBER: ...]` → stored as a fact, recalled in future sessions
+- `[GOAL: ...|deadline: ...]` → tracked active goal
+- `[DONE: ...]` → marks a matching goal as complete
+
+Users can view stored memory with `/memory`.
+
+#### User Profile & Personalization
+
+```bash
+# Path to a markdown file describing the user (read before every Claude call)
+USER_PROFILE_PATH=/home/yourname/.claude-profile.md
+
+# Display name Claude uses when addressing you
+USER_NAME=Alex
+
+# Your local timezone (used for check-ins and context timestamps)
+USER_TIMEZONE=UTC
+```
+
+Template: `cp config/profile.example.md ~/.claude-profile.md`
+
+#### Proactive Check-ins
+
+```bash
+# Enable Claude-driven proactive messages (requires ENABLE_SCHEDULER=true)
+ENABLE_CHECKINS=false
+
+# How often the check-in job runs
+CHECKIN_INTERVAL_MINUTES=30
+
+# Maximum proactive messages sent per day
+CHECKIN_MAX_PER_DAY=3
+
+# Quiet hours (local time via USER_TIMEZONE): no messages sent in this window
+CHECKIN_QUIET_HOURS_START=22    # 10 PM
+CHECKIN_QUIET_HOURS_END=8       # 8 AM
+```
+
+Check-ins need both scheduler and notification settings:
+```bash
+ENABLE_SCHEDULER=true
+NOTIFICATION_CHAT_IDS=123456789
 ```
 
 #### Agentic Platform

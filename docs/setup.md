@@ -4,8 +4,8 @@
 
 ### 1. Prerequisites
 
-- **Python 3.10+** -- [Download here](https://www.python.org/downloads/)
-- **Poetry** -- Modern Python dependency management
+- **Python 3.11+** -- [Download here](https://www.python.org/downloads/)
+- **uv** -- `curl -LsSf https://astral.sh/uv/install.sh | sh`
 - **Telegram Bot Token** -- Get one from [@BotFather](https://t.me/botfather)
 - **Claude Authentication** -- Choose one method below
 
@@ -57,7 +57,7 @@ USE_SDK=false
 ### 3. Install the Bot
 
 ```bash
-git clone https://github.com/RichardAtCT/claude-code-telegram.git
+git clone https://github.com/talpah/claude-code-telegram.git
 cd claude-code-telegram
 make dev
 ```
@@ -227,6 +227,66 @@ RATE_LIMIT_REQUESTS=100
 CLAUDE_TIMEOUT_SECONDS=600
 ```
 
+## Optional Features Setup
+
+### Voice Transcription
+
+Send voice messages and have them automatically transcribed.
+
+**Groq (cloud, recommended):**
+```bash
+# Get a free API key at console.groq.com
+VOICE_PROVIDER=groq
+GROQ_API_KEY=gsk_...
+```
+
+**Local (offline, needs whisper.cpp + ffmpeg):**
+```bash
+# Install whisper.cpp: https://github.com/ggerganov/whisper.cpp
+# Install ffmpeg: apt install ffmpeg / brew install ffmpeg
+VOICE_PROVIDER=local
+WHISPER_BINARY=/usr/local/bin/whisper-cpp
+WHISPER_MODEL_PATH=/path/to/models/ggml-base.en.bin
+```
+
+### Semantic Memory
+
+Claude remembers facts and goals across sessions.
+
+```bash
+ENABLE_MEMORY=true
+ENABLE_MEMORY_EMBEDDINGS=true   # needs sentence-transformers (installed via make dev)
+```
+
+Use `/memory` in the bot to view what Claude has stored about you.
+
+### User Profile
+
+Create a markdown file describing yourself so Claude always has context:
+
+```bash
+cp config/profile.example.md ~/.claude-profile.md
+nano ~/.claude-profile.md       # fill in your details
+
+# Then in .env:
+USER_PROFILE_PATH=/home/yourname/.claude-profile.md
+USER_NAME=Alex
+USER_TIMEZONE=Europe/Bucharest
+```
+
+### Proactive Check-ins
+
+Have Claude reach out to you unprompted when it has something to say.
+
+```bash
+ENABLE_CHECKINS=true
+ENABLE_SCHEDULER=true
+NOTIFICATION_CHAT_IDS=123456789   # your Telegram chat ID
+CHECKIN_MAX_PER_DAY=3
+CHECKIN_QUIET_HOURS_START=22
+CHECKIN_QUIET_HOURS_END=8
+```
+
 ## Troubleshooting
 
 ### Bot doesn't respond
@@ -259,6 +319,16 @@ echo $ANTHROPIC_API_KEY
 ls -la /path/to/your/projects
 ```
 
+### Memory not working
+
+```bash
+# Verify sentence-transformers is installed
+uv run python -c "from sentence_transformers import SentenceTransformer; print('ok')"
+
+# If missing:
+uv pip install sentence-transformers numpy
+```
+
 ## Production Deployment
 
 ```bash
@@ -268,12 +338,41 @@ LOG_LEVEL=INFO
 RATE_LIMIT_REQUESTS=5
 CLAUDE_MAX_COST_PER_USER=5.0
 SESSION_TIMEOUT_HOURS=12
-ENABLE_TELEMETRY=true
 ```
+
+### Running as a systemd Service
+
+```ini
+# /etc/systemd/system/claude-telegram.service
+[Unit]
+Description=Claude Code Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=youruser
+WorkingDirectory=/path/to/claude-code-telegram
+EnvironmentFile=/path/to/claude-code-telegram/.env
+ExecStart=/path/to/claude-code-telegram/.venv/bin/python -m src.main
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now claude-telegram
+sudo journalctl -u claude-telegram -f   # follow logs
+```
+
+The `/reload` bot command sends `SIGHUP` to the process. With `Restart=on-failure`
+and `RestartSec=5`, systemd will restart the bot within seconds.
 
 ## Getting Help
 
 - **Documentation**: Check the main [README.md](../README.md)
 - **Configuration**: See [configuration.md](configuration.md) for all options
 - **Security**: See [SECURITY.md](../SECURITY.md) for security concerns
-- **Issues**: [Open an issue](https://github.com/RichardAtCT/claude-code-telegram/issues)
+- **Issues**: [Open an issue](https://github.com/talpah/claude-code-telegram/issues)

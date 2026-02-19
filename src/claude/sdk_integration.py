@@ -176,6 +176,7 @@ class ClaudeSDKManager:
                 cwd=str(working_directory),
                 allowed_tools=self.config.claude_allowed_tools or [],
                 cli_path=cli_path,
+                model=self.config.claude_model or None,
                 sandbox={
                     "enabled": self.config.sandbox_enabled,
                     "autoAllowBashIfSandboxed": True,

@@ -90,7 +90,7 @@ The bot supports two interaction modes:
 
 The default conversational mode. Just talk to Claude naturally -- no special commands required.
 
-**Commands:** `/start`, `/new`, `/status`, `/verbose`, `/repo`
+**Commands:** `/start`, `/new`, `/status`, `/verbose`, `/repo`, `/memory`, `/model`, `/reload`
 If `ENABLE_PROJECT_THREADS=true`: `/sync_threads`
 
 ```
@@ -198,6 +198,10 @@ Enable with `ENABLE_API_SERVER=true` and `ENABLE_SCHEDULER=true`. See [docs/setu
 - Notification service with per-chat rate limiting
 - Tunable verbose output showing Claude's tool usage and reasoning in real-time
 - Persistent typing indicator so users always know the bot is working
+- **Voice transcription** -- send voice messages; Groq Whisper API or local whisper.cpp transcribes them to text
+- **Semantic memory** -- Claude automatically extracts and stores facts and goals; recalled on every request via FTS5 + vector search
+- **Proactive check-ins** -- Claude decides when to reach out and sends you unprompted updates (configurable quiet hours + daily cap)
+- **User profile** -- load a markdown profile file so Claude always knows your preferences and context
 
 ### Planned Enhancements
 
@@ -253,6 +257,67 @@ ENABLE_SCHEDULER=false           # Enable cron job scheduler
 
 # Notifications
 NOTIFICATION_CHAT_IDS=123,456    # Default chat IDs for proactive notifications
+```
+
+### Voice Transcription
+
+Send voice messages to the bot and they are automatically transcribed and passed to Claude.
+
+```bash
+# Cloud transcription (recommended -- fast, no GPU needed)
+VOICE_PROVIDER=groq
+GROQ_API_KEY=gsk_...
+
+# Local transcription (offline, needs whisper.cpp + ffmpeg installed)
+VOICE_PROVIDER=local
+WHISPER_BINARY=/usr/local/bin/whisper-cpp
+WHISPER_MODEL_PATH=/path/to/ggml-base.en.bin
+```
+
+### Semantic Memory
+
+Claude automatically remembers facts and tracks your goals across sessions.
+
+```bash
+ENABLE_MEMORY=true               # Enable semantic memory (default: false)
+ENABLE_MEMORY_EMBEDDINGS=true    # Vector similarity search via sentence-transformers
+MEMORY_MAX_FACTS=50              # Max stored facts per user
+MEMORY_MAX_CONTEXT_ITEMS=10      # Items injected into each prompt
+```
+
+In your conversations, Claude will pick up on patterns like:
+- `[REMEMBER: you prefer pytest over unittest]` → stored as a fact
+- `[GOAL: ship the auth refactor by Friday]` → stored as an active goal
+- `[DONE: auth refactor]` → marks the goal complete
+
+View your stored memory with `/memory`.
+
+### User Profile
+
+Create a markdown file describing yourself and your preferences. Claude reads it before every response.
+
+```bash
+USER_PROFILE_PATH=/home/yourname/.claude-profile.md
+USER_NAME=Alex                   # Optional: how Claude addresses you
+USER_TIMEZONE=Europe/Bucharest   # Used in check-ins and timestamps
+```
+
+Copy the template: `cp config/profile.example.md ~/.claude-profile.md` and edit it.
+
+### Proactive Check-ins
+
+Claude periodically decides whether to send you an unsolicited update or question.
+
+```bash
+ENABLE_CHECKINS=true             # Enable proactive check-ins (default: false)
+CHECKIN_INTERVAL_MINUTES=30      # How often Claude evaluates whether to reach out
+CHECKIN_MAX_PER_DAY=3            # Daily cap on proactive messages
+CHECKIN_QUIET_HOURS_START=22     # Don't send messages after 10 PM
+CHECKIN_QUIET_HOURS_END=8        # Resume after 8 AM
+
+# Check-ins need the scheduler and notification settings
+ENABLE_SCHEDULER=true
+NOTIFICATION_CHAT_IDS=123456789
 ```
 
 ### Project Threads Mode
