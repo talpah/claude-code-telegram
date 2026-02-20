@@ -1,0 +1,21 @@
+[Unit]
+Description=Claude Telegram Bot Watchdog
+After=claude-telegram-bot.service
+Wants=claude-telegram-bot.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cosmin/Projects/claude-code-telegram
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="PATH=/home/cosmin/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/home/cosmin/Projects/claude-code-telegram/deploy/watchdog.sh
+
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-watchdog
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,24 @@
+[Unit]
+Description=Claude Telegram Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cosmin/Projects/claude-code-telegram
+EnvironmentFile=/home/cosmin/Projects/claude-code-telegram/.env
+Environment="PATH=/home/cosmin/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+# Back up .env before each start so watchdog has a reference point
+ExecStartPre=/home/cosmin/Projects/claude-code-telegram/deploy/backup-config.sh
+
+ExecStart=/home/cosmin/.local/bin/uv run claude-telegram-bot
+
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-telegram-bot
+
+[Install]
+WantedBy=default.target

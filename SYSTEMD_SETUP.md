@@ -1,148 +1,139 @@
-# Systemd User Service Setup
+# Systemd Service Setup
 
-This guide shows how to run the Claude Code Telegram Bot as a persistent systemd user service.
+The project ships with a `deploy/` directory containing systemd user services for the bot and a watchdog that automatically reverts bad config.
 
-**⚠️ SECURITY NOTE:** Before setting up the service, ensure your `.env` file has `DEVELOPMENT_MODE=false` and `ENVIRONMENT=production` for secure operation.
+## Architecture
+
+```
+claude-telegram-bot.service      — main bot process
+claude-telegram-watchdog.service — monitors bot; reverts .env on config-induced failure
+claude-log-monitor.service       — tails logs, classifies errors, sends Telegram alerts
+```
+
+**Watchdog behaviour:**
+1. On each bot start, `deploy/backup-config.sh` snapshots `.env` to `data/config-backups/`
+2. Once the bot has been running for 30 s, the current `.env` is saved as `last-good`
+3. If the bot enters `failed` state and `.env` differs from `last-good`, the bad config is archived to `data/config-backups/failed/` and the last-good config is restored
+4. Bot is restarted; a 60 s cooldown prevents revert loops
 
 ## Quick Setup
 
-### 1. Create the service file
-
 ```bash
-mkdir -p ~/.config/systemd/user
-nano ~/.config/systemd/user/claude-telegram-bot.service
+# 1. Install and enable both services
+make install-service
+
+# 2. Start them
+make start
+
+# 3. (Optional) Keep services running after logout
+loginctl enable-linger $USER
 ```
 
-Add this content:
-
-```ini
-[Unit]
-Description=Claude Code Telegram Bot
-After=network.target
-
-[Service]
-Type=simple
-WorkingDirectory=/home/ubuntu/Code/oss/claude-code-telegram
-ExecStart=/home/ubuntu/.local/bin/poetry run claude-telegram-bot
-Restart=always
-RestartSec=10
-StandardOutput=journal
-StandardError=journal
-
-# Environment
-Environment="PATH=/home/ubuntu/.local/bin:/usr/local/bin:/usr/bin:/bin"
-
-[Install]
-WantedBy=default.target
-```
-
-**Note:** Update `WorkingDirectory` to your project path.
-
-### 2. Enable and start the service
-
-```bash
-# Reload systemd to recognize the new service
-systemctl --user daemon-reload
-
-# Enable auto-start on login
-systemctl --user enable claude-telegram-bot.service
-
-# Start the service now
-systemctl --user start claude-telegram-bot.service
-```
-
-### 3. Verify it's running
-
-```bash
-systemctl --user status claude-telegram-bot
-```
-
-### 4. Verify secure configuration
-
-Check that the service is running in production mode:
-
-```bash
-# Check logs for environment mode
-journalctl --user -u claude-telegram-bot -n 50 | grep -i "environment\|development"
-
-# Should show:
-# "environment": "production"
-# "development_mode": false (implied, not shown if false)
-
-# Verify authentication is restricted
-journalctl --user -u claude-telegram-bot -n 50 | grep -i "auth"
-
-# Should show:
-# "allowed_users": 1 (or more if multiple users configured)
-# "allow_all_dev": false
-```
-
-If you see `allow_all_dev: true` or `environment: development`, **STOP THE SERVICE** and fix your `.env` file immediately.
+`make install-service` rewrites the hardcoded paths in `deploy/*.service` to match your checkout location and installs them into `~/.config/systemd/user/`.
 
 ## Common Commands
 
+| Command | Description |
+|---------|-------------|
+| `make start` | Start bot + watchdog + log monitor |
+| `make stop` | Stop all three services |
+| `make restart` | Restart bot (watchdog + monitor stay up) |
+| `make status` | Show status of all three services |
+| `make logs` | Tail bot logs |
+| `make watchdog-logs` | Tail watchdog logs |
+| `make monitor-logs` | Tail log monitor logs |
+
+Raw systemctl equivalents:
+
 ```bash
-# Start service
-systemctl --user start claude-telegram-bot
-
-# Stop service
-systemctl --user stop claude-telegram-bot
-
-# Restart service
+systemctl --user start   claude-telegram-bot claude-telegram-watchdog
+systemctl --user stop    claude-telegram-bot claude-telegram-watchdog
 systemctl --user restart claude-telegram-bot
-
-# View status
-systemctl --user status claude-telegram-bot
-
-# View live logs
-journalctl --user -u claude-telegram-bot -f
-
-# View recent logs (last 50 lines)
-journalctl --user -u claude-telegram-bot -n 50
-
-# Disable auto-start
-systemctl --user disable claude-telegram-bot
-
-# Enable auto-start
-systemctl --user enable claude-telegram-bot
+systemctl --user status  claude-telegram-bot claude-telegram-watchdog
+journalctl --user -fu    claude-telegram-bot
+journalctl --user -fu    claude-telegram-watchdog
 ```
 
-## Updating the Service
+## Config Change & Rollback
 
-After editing the service file:
+The watchdog tracks the last config known to be stable. To roll back manually:
 
 ```bash
-systemctl --user daemon-reload
-systemctl --user restart claude-telegram-bot
+# See available backups
+ls -lt data/config-backups/
+
+# Restore a specific backup
+cp data/config-backups/.env.20260220T143000 .env
+make restart
+```
+
+Failed configs (the ones that caused the bot to crash) are saved separately:
+
+```bash
+ls data/config-backups/failed/
+```
+
+Keep only the last 20 backups automatically (managed by `deploy/backup-config.sh`).
+
+## Updating the Service Files
+
+If you change `deploy/bot.service` or `deploy/watchdog.service`, reinstall:
+
+```bash
+make install-service
+make restart
 ```
 
 ## Troubleshooting
 
 **Service won't start:**
 ```bash
-# Check logs for errors
 journalctl --user -u claude-telegram-bot -n 100
-
-# Verify paths in service file are correct
-systemctl --user cat claude-telegram-bot
-
-# Check that Poetry is installed
-poetry --version
-
-# Test the bot manually first
-cd /home/ubuntu/Code/oss/claude-code-telegram
-poetry run claude-telegram-bot
+systemctl --user cat claude-telegram-bot   # verify installed paths
+uv run claude-telegram-bot                 # test manually
 ```
 
 **Service stops after logout:**
-
-Enable lingering to keep user services running after logout:
 ```bash
 loginctl enable-linger $USER
 ```
 
+**Watchdog not reverting:**
+- Check `make watchdog-logs` — it logs every decision
+- The revert only triggers if the bot fails *and* `.env` differs from `last-good`
+- If the bot has never been up for 30 s, `last-good` hasn't been written yet
+
 ## Files
 
-- Service file: `~/.config/systemd/user/claude-telegram-bot.service`
-- Logs: View with `journalctl --user -u claude-telegram-bot`
-- Project: `/home/ubuntu/Code/oss/claude-code-telegram`
+| Path | Purpose |
+|------|---------|
+| `deploy/bot.service` | Bot service template |
+| `deploy/watchdog.service` | Watchdog service template |
+| `deploy/log-monitor.service` | Log monitor service template |
+| `deploy/backup-config.sh` | Runs at ExecStartPre — snapshots .env |
+| `deploy/watchdog.sh` | Watchdog loop script |
+| `deploy/log_monitor.py` | Log monitor script |
+| `data/config-backups/` | Rolling .env backups (last 20) |
+| `data/config-backups/failed/` | Configs that caused bot failures |
+| `data/config-backups/.env.last-good` | Last config confirmed stable (≥30 s uptime) |
+| `~/.claude-code-telegram/monitor_state.json` | Log monitor dedup state |
+| `~/.claude-code-telegram/errors_YYYY-MM-DD.txt` | Daily error log |
+| `~/.config/systemd/user/` | Installed service files |
+
+## Log Monitor
+
+`claude-log-monitor.service` tails journald from both `claude-telegram-bot` and `claude-telegram-watchdog`, watching for WARNING-level and above entries.
+
+**Per new error pattern:**
+1. Normalizes the message (strips IDs, timestamps, numbers, paths) and hashes it
+2. Calls Claude Haiku to classify: `CRITICAL`, `TODO`, or `IGNORE`
+3. Appends to `~/.claude-code-telegram/errors_YYYY-MM-DD.txt`
+4. Sends an immediate Telegram message to the primary user
+
+**Every 2 hours** (even during quiet periods):
+- Sends a summary: new pattern count + top 5 recurring errors
+- Only sent if there were errors in the window
+
+**Deduplication:** same normalized pattern = one entry, count incremented, no repeat notification.
+
+**If the bot is down:** notifications go directly to `api.telegram.org` using `BOT_TOKEN` from `.env`, so alerts still arrive.

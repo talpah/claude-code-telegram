@@ -1,0 +1,21 @@
+[Unit]
+Description=Claude Telegram Bot — Log Monitor & Alerter
+After=claude-telegram-bot.service
+Wants=claude-telegram-bot.service
+
+[Service]
+Type=simple
+WorkingDirectory=/home/cosmin/Projects/claude-code-telegram
+Environment="XDG_RUNTIME_DIR=/run/user/1000"
+Environment="PATH=/home/cosmin/.local/bin:/usr/local/bin:/usr/bin:/bin"
+
+ExecStart=/home/cosmin/.local/bin/uv run python deploy/log_monitor.py
+
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=claude-log-monitor
+
+[Install]
+WantedBy=default.target
