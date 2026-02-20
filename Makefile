@@ -1,4 +1,4 @@
-.PHONY: install dev test lint format clean help run \
+.PHONY: install dev test lint format clean help run setup \
         install-service uninstall-service start stop restart status logs watchdog-logs monitor-logs all-logs
 
 # Default target
@@ -14,6 +14,7 @@ help:
 	@echo "  format           Format code"
 	@echo "  clean            Clean up generated files"
 	@echo "  run              Run the bot (foreground)"
+	@echo "  setup            Run the interactive setup wizard"
 	@echo ""
 	@echo "Service (systemd --user):"
 	@echo "  install-service  Install + enable bot and watchdog services"
@@ -51,6 +52,9 @@ clean:
 	find . -type f -name "*.pyc" -delete 2>/dev/null || true
 	find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
 	rm -rf .coverage htmlcov/ .pytest_cache/ dist/ build/
+
+setup:
+	uv run claude-telegram-setup
 
 run:
 	uv run claude-telegram-bot
