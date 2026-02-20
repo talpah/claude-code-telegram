@@ -56,8 +56,41 @@ _STRIP = [
     re.compile(r"/[^\s:,\"']+"),                   # file paths
 ]
 
+# Metadata fields to strip from JSON when deduplicating (cascading errors)
+_METADATA_FIELDS = {
+    "user_id", "session_id", "timestamp", "logger", "level",
+    "event", "first_seen", "last_seen", "count", "severity",
+    "request_id", "trace_id", "span_id", "correlation_id",
+}
+
+
+def extract_core_error(msg: str) -> str:
+    """Extract core error message from JSON, stripping metadata fields.
+    
+    For cascading errors (e.g. same error from 3 layers), extract the
+    'error' field to group related errors together.
+    """
+    try:
+        data = json.loads(msg)
+        if isinstance(data, dict):
+            # If there's an "error" field, prioritize that for deduplication
+            if "error" in data:
+                return str(data["error"])
+            
+            # Otherwise, rebuild JSON with only non-metadata fields
+            core = {k: v for k, v in data.items() if k not in _METADATA_FIELDS}
+            if core:
+                return json.dumps(core, sort_keys=True)
+    except (json.JSONDecodeError, TypeError):
+        pass
+    
+    return msg
+
 
 def normalize(msg: str) -> str:
+    # First extract core error from JSON to group cascading errors
+    msg = extract_core_error(msg)
+    
     for pat in _STRIP:
         msg = pat.sub("<X>", msg)
     return re.sub(r"\s+", " ", msg).strip().lower()
