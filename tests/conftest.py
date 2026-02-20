@@ -3,6 +3,12 @@
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _no_real_toml(monkeypatch, tmp_path):
+    """Prevent tests from reading ~/.claude-code-telegram/config/settings.toml."""
+    monkeypatch.setattr("src.config.toml_source.TOML_PATH", tmp_path / "settings.toml")
+
+
 @pytest.fixture
 def sample_user_id():
     """Sample Telegram user ID for testing."""

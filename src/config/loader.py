@@ -39,6 +39,14 @@ def resolve_env_file(config_file: Path | None = None) -> Path | None:
     return None
 
 
+def resolve_toml_file() -> Path | None:
+    """Return path to settings.toml if it exists, else None."""
+    from src.utils.constants import APP_HOME
+
+    toml_path = APP_HOME / "config" / "settings.toml"
+    return toml_path if toml_path.exists() else None
+
+
 def load_config(env: str | None = None, config_file: Path | None = None) -> Settings:
     """Load configuration based on environment.
 
@@ -52,13 +60,21 @@ def load_config(env: str | None = None, config_file: Path | None = None) -> Sett
     Raises:
         ConfigurationError: If configuration is invalid
     """
-    # Load .env file explicitly
+    # Phase 2: ensure settings.toml exists (migrate from .env or generate template)
+    # This is a safety net — bootstrap_dirs() should have run first in main.py.
+    if not config_file:  # skip when an explicit config file is provided
+        from .toml_template import ensure_toml_config, migrate_env_to_toml
+
+        if not migrate_env_to_toml():
+            ensure_toml_config()
+
+    # Load .env explicitly for legacy .env-only setups (no-op after migration)
     env_file = resolve_env_file(config_file)
     if env_file and env_file.exists():
         logger.info("Loading .env file", path=str(env_file))
         load_dotenv(env_file)
     else:
-        logger.warning("No .env file found")
+        logger.debug("No .env file (using settings.toml or env vars)")
 
     # Determine environment
     env = env or os.getenv("ENVIRONMENT", "development")

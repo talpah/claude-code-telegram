@@ -76,6 +76,12 @@ def bootstrap_dirs() -> None:
         shutil.copy2(old_db, new_db)
         logger.info("Migrated bot.db to consolidated location", dst=str(new_db))
 
+    # Phase 2: migrate .env → settings.toml (or generate empty template)
+    from src.config.toml_template import ensure_toml_config, migrate_env_to_toml
+
+    if not migrate_env_to_toml():
+        ensure_toml_config()
+
 
 def setup_logging(debug: bool = False) -> None:
     """Configure structured logging."""

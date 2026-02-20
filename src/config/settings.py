@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import Field, SecretStr, field_validator, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 from src.utils.constants import (
     DEFAULT_CLAUDE_MAX_COST_PER_USER,
@@ -348,6 +348,25 @@ class Settings(BaseSettings):
                 raise ValueError("projects_config_path required when enable_project_threads is True")
 
         return self
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """Priority: init kwargs > env vars > settings.toml > .env (legacy)."""
+        from .toml_source import TomlSettingsSource
+
+        return (
+            init_settings,  # direct kwargs (tests, programmatic overrides)
+            env_settings,  # system env vars always win over files
+            TomlSettingsSource(settings_cls),  # settings.toml (primary config)
+            dotenv_settings,  # .env legacy fallback
+        )
 
     @property
     def is_production(self) -> bool:

@@ -17,10 +17,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import tomlkit
 from dotenv import set_key
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
 from ..config.settings import Settings
+from ..config.toml_source import FIELD_TO_SECTION
 from ..utils.constants import APP_HOME
 
 # ── Type aliases ──────────────────────────────────────────────────────────────
@@ -227,22 +229,37 @@ def find_category(field_name: str) -> str:
 
 
 def resolve_env_file() -> Path | None:
-    """Return path to the .env that should be written on settings changes.
-
-    Priority:
-    1. ~/.claude-code-telegram/config/.env
-    2. ./.env (project root, legacy)
-    3. None (no file found — changes are in-memory only)
-    """
+    """Return path to the .env for legacy dotenv writes (prefer resolve_config_file)."""
     new_path = APP_HOME / "config" / ".env"
     if new_path.exists():
         return new_path
-
     legacy = Path(".env")
     if legacy.exists():
         return legacy
-
     return None
+
+
+def resolve_config_file() -> tuple[Path | None, str]:
+    """Return (path, format) for the writable config file.
+
+    Returns:
+        (path, "toml")   — settings.toml exists (preferred)
+        (path, "dotenv") — .env exists (legacy)
+        (None, "none")   — no config file found
+    """
+    toml_path = APP_HOME / "config" / "settings.toml"
+    if toml_path.exists():
+        return toml_path, "toml"
+
+    env_path = APP_HOME / "config" / ".env"
+    if env_path.exists():
+        return env_path, "dotenv"
+
+    legacy = Path(".env")
+    if legacy.exists():
+        return legacy, "dotenv"
+
+    return None, "none"
 
 
 def is_owner(user_id: int, settings: Settings) -> bool:
@@ -255,10 +272,16 @@ def is_owner(user_id: int, settings: Settings) -> bool:
 # ── Persistence ───────────────────────────────────────────────────────────────
 
 
-def apply_setting(settings: Settings, env_path: Path | None, field: str, value: Any) -> str:
-    """Persist *value* for *field* to .env and update settings in-memory.
+def apply_setting(
+    settings: Settings,
+    env_path: Path | None,  # kept for backward-compat; ignored when TOML exists
+    field: str,
+    value: Any,
+) -> str:
+    """Persist *value* for *field* and update settings in-memory.
 
-    Returns a human-readable change description.
+    Writes to settings.toml (preferred, preserves comments) or falls back to
+    .env via python-dotenv. Returns a human-readable change description.
     """
     field_def = find_field(field)
     label = field_def["label"] if field_def else field
@@ -267,10 +290,7 @@ def apply_setting(settings: Settings, env_path: Path | None, field: str, value: 
 
     # Coerce to correct Python type
     if field_type == "bool":
-        if isinstance(value, bool):
-            typed_value: Any = value
-        else:
-            typed_value = str(value).lower() in ("true", "1", "yes")
+        typed_value: Any = value if isinstance(value, bool) else str(value).lower() in ("true", "1", "yes")
         str_value = "true" if typed_value else "false"
     elif field_type == "int":
         typed_value = int(value)
@@ -284,14 +304,33 @@ def apply_setting(settings: Settings, env_path: Path | None, field: str, value: 
 
     old_value = getattr(settings, field, None)
 
-    # Write to .env (preserves comments and other keys)
-    if env_path and env_path.exists():
-        set_key(str(env_path), env_key, str_value)
+    # Persist: TOML preferred, dotenv fallback
+    config_path, config_fmt = resolve_config_file()
+    if config_fmt == "toml" and config_path:
+        _write_toml_value(config_path, field, typed_value)
+    elif config_path:
+        set_key(str(config_path), env_key, str_value)
 
     # Update in-memory immediately
     setattr(settings, field, typed_value)
 
     return f"{label}: {old_value} → {typed_value}"
+
+
+def _write_toml_value(toml_path: Path, field_name: str, value: Any) -> None:
+    """Update a single field in settings.toml, preserving all other content."""
+    section = FIELD_TO_SECTION.get(field_name)
+    if section is None:
+        return  # field not managed by TOML — skip
+
+    text = toml_path.read_text(encoding="utf-8")
+    doc = tomlkit.parse(text)
+
+    if section not in doc:
+        doc.add(section, tomlkit.table())
+
+    doc[section][field_name] = value  # type: ignore[index]
+    toml_path.write_text(tomlkit.dumps(doc), encoding="utf-8")
 
 
 def toggle_setting(settings: Settings, env_path: Path | None, field: str) -> str:
