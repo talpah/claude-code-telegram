@@ -206,6 +206,9 @@ class ClaudeSDKManager:
             async def _run_client() -> None:
                 async with ClaudeSDKClient(options) as client:
                     await client.query(prompt)
+                    
+                    # SDK iterator may throw on rate_limit_event. Catch and continue
+                    # to collect as many meaningful messages as possible.
                     try:
                         async for message in client.receive_response():
                             try:
@@ -237,12 +240,17 @@ class ClaudeSDKManager:
                                     error_type=type(message_error).__name__,
                                 )
                                 continue
+                    except StopAsyncIteration:
+                        # Normal end of iterator — all good
+                        logger.debug("Message stream ended normally")
                     except Exception as receive_error:
-                        # If the iterator itself fails (not individual messages), log but don't fail
+                        # Iterator threw an exception (e.g. rate_limit_event at the end)
+                        # Log but continue — we've collected what we could
                         logger.warning(
-                            "SDK receive_response stream error",
+                            "SDK message stream exception (expected for rate_limit_event)",
                             error=str(receive_error),
                             error_type=type(receive_error).__name__,
+                            messages_collected_so_far=len(messages),
                         )
 
             # Execute with timeout
@@ -256,12 +264,25 @@ class ClaudeSDKManager:
             tools_used: list[dict[str, Any]] = []
             claude_session_id = None
             result_content = None
+            
+            logger.info(
+                "Processing collected messages",
+                total_messages=len(messages),
+                message_types=[type(m).__name__ for m in messages],
+            )
+            
             for message in messages:
                 if isinstance(message, ResultMessage):
                     cost = getattr(message, "total_cost_usd", 0.0) or 0.0
                     claude_session_id = getattr(message, "session_id", None)
                     result_content = getattr(message, "result", None)
                     tools_used = self._extract_tools_from_messages(messages)
+                    logger.info(
+                        "Found ResultMessage",
+                        cost=cost,
+                        session_id=claude_session_id,
+                        result_length=len(result_content) if result_content else 0,
+                    )
                     break
 
             # Calculate duration
@@ -278,8 +299,21 @@ class ClaudeSDKManager:
                 )
 
             # Use ResultMessage.result if available, fall back to message extraction
-            content = result_content if result_content is not None else self._extract_content_from_messages(messages)
+            if result_content is not None:
+                logger.info("Using ResultMessage.result", content_length=len(result_content))
+                content = result_content
+            else:
+                logger.warning("ResultMessage not found, extracting from AssistantMessages")
+                content = self._extract_content_from_messages(messages)
 
+            if not content or not content.strip():
+                logger.error(
+                    "Empty content returned from Claude",
+                    content_length=len(content) if content else 0,
+                    messages_collected=len(messages),
+                    message_types=[type(m).__name__ for m in messages],
+                )
+            
             return ClaudeResponse(
                 content=content,
                 session_id=final_session_id,
