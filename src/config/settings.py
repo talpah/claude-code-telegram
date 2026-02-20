@@ -58,7 +58,7 @@ class Settings(BaseSettings):
         None,
         description="Anthropic API key for SDK (optional if CLI logged in)",
     )
-    claude_model: str = Field("claude-3-5-sonnet-20241022", description="Claude model to use")
+    claude_model: str = Field("claude-sonnet-4-5", description="Claude model to use")
     claude_max_turns: int = Field(DEFAULT_CLAUDE_MAX_TURNS, description="Max conversation turns")
     claude_timeout_seconds: int = Field(DEFAULT_CLAUDE_TIMEOUT_SECONDS, description="Claude timeout")
     claude_max_cost_per_user: float = Field(DEFAULT_CLAUDE_MAX_COST_PER_USER, description="Max cost per user")

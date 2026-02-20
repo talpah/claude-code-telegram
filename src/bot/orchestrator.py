@@ -924,16 +924,25 @@ class MessageOrchestrator:
 
         if not file_handler:
             file = await document.get_file()
-            file_bytes = await file.download_as_bytearray()
-            try:
-                content = file_bytes.decode("utf-8")
-                if len(content) > 50000:
-                    content = content[:50000] + "\n... (truncated)"
-                caption = update.message.caption or "Please review this file:"
-                prompt = f"{caption}\n\n**File:** `{document.file_name}`\n\n```\n{content}\n```"
-            except UnicodeDecodeError:
-                await progress_msg.edit_text("Unsupported file format. Must be text-based (UTF-8).")
-                return
+            file_name = document.file_name or "uploaded_file"
+            caption = update.message.caption or "Please review this file:"
+
+            if Path(file_name).suffix.lower() == ".pdf":
+                # Save PDF to working dir so Claude's Read tool can access it
+                current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
+                pdf_path = Path(current_dir) / file_name
+                await file.download_to_drive(str(pdf_path))
+                prompt = f"{caption}\n\nPlease read the file `{file_name}` and assist with the request."
+            else:
+                file_bytes = await file.download_as_bytearray()
+                try:
+                    content = file_bytes.decode("utf-8")
+                    if len(content) > 50000:
+                        content = content[:50000] + "\n... (truncated)"
+                    prompt = f"{caption}\n\n**File:** `{file_name}`\n\n```\n{content}\n```"
+                except UnicodeDecodeError:
+                    await progress_msg.edit_text("Unsupported file format. Must be text-based (UTF-8).")
+                    return
 
         # Process with Claude
         claude_integration = _bd(context).get("claude_integration")
@@ -1119,14 +1128,18 @@ class MessageOrchestrator:
 
     # Aliases / short names → full model IDs
     _MODEL_ALIASES: dict[str, str] = {
-        # Claude 4 family
-        "opus": "claude-opus-4-5",
-        "opus4": "claude-opus-4-5",
+        # Claude 4.6 family (latest)
+        "opus": "claude-opus-4-6",
+        "opus46": "claude-opus-4-6",
+        "sonnet": "claude-sonnet-4-6",
+        "sonnet46": "claude-sonnet-4-6",
+        # Claude 4.5 family
+        "opus45": "claude-opus-4-5",
         "opusplan": "claude-opus-4-5",
-        "sonnet": "claude-sonnet-4-5",
-        "sonnet4": "claude-sonnet-4-5",
+        "sonnet45": "claude-sonnet-4-5",
         "haiku": "claude-haiku-4-5",
         "haiku4": "claude-haiku-4-5",
+        "haiku45": "claude-haiku-4-5",
         # Claude 3 / 3.5 family
         "opus3": "claude-3-opus-20240229",
         "sonnet3": "claude-3-5-sonnet-20241022",
@@ -1148,7 +1161,7 @@ class MessageOrchestrator:
                 f"Current model: <code>{escape_html(current)}</code>\n\n"
                 f"Usage: <code>/model &lt;name&gt;</code>\n\n"
                 f"Aliases:\n{alias_lines}\n\n"
-                "Any full model ID (e.g. <code>claude-opus-4-5</code>) is also accepted.",
+                "Any full model ID (e.g. <code>claude-opus-4-6</code>) is also accepted.",
                 parse_mode="HTML",
             )
             return
