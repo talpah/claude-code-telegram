@@ -288,6 +288,11 @@ class MessageOrchestrator:
     def _register_agentic_handlers(self, app: Application) -> None:
         """Register agentic handlers: commands + text/file/photo."""
         from .handlers import command
+        from .onboarding import build_conversation_handler
+
+        # Onboarding wizard — group 5 ensures text input beats agentic_text (group 10)
+        conv_handler = build_conversation_handler(self.settings, self.deps)
+        app.add_handler(conv_handler, group=5)
 
         # Commands
         handlers = [
@@ -411,6 +416,7 @@ class MessageOrchestrator:
                 BotCommand("reload", "Restart the bot process"),
                 BotCommand("settings", "Interactive settings menu (owner only)"),
                 BotCommand("set", "Set a setting value (owner only)"),
+                BotCommand("setup", "Run onboarding wizard (owner only)"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -481,6 +487,10 @@ class MessageOrchestrator:
                 "<code>~/.claude-code-telegram/config/settings.toml</code>."
             )
 
+        wizard_kb = None
+        if is_owner(user.id, self.settings) and not self.settings.setup_completed:
+            wizard_kb = InlineKeyboardMarkup([[InlineKeyboardButton("Set up bot", callback_data="wiz:start")]])
+
         await update.message.reply_text(
             f"Hi {safe_name}! I'm your AI coding assistant.\n"
             f"Just tell me what you need — I can read, write, and run code.\n\n"
@@ -488,6 +498,7 @@ class MessageOrchestrator:
             f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload · /settings · /set"
             f"{sync_line}{setup_hint}",
             parse_mode="HTML",
+            reply_markup=wizard_kb,
         )
 
     async def agentic_new(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -1431,8 +1442,9 @@ class MessageOrchestrator:
             )
 
     async def agentic_reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """/reload — restart the bot process in-place to pick up code/config changes."""
+        """/reload — restart the bot process to pick up code/config changes."""
         import os
+        import subprocess
         import sys
 
         assert update.message is not None
@@ -1447,11 +1459,25 @@ class MessageOrchestrator:
                 success=True,
             )
 
-        await update.message.reply_text("Restarting bot process...")
-        await asyncio.sleep(0.5)
         log = structlog.get_logger()
-        log.info("Shutting down: user requested restart via /reload")
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+        if os.environ.get("INVOCATION_ID"):
+            # Running under systemd — delegate to systemctl so the full service
+            # lifecycle runs: ExecStartPre, environment reload, watchdog reset.
+            await update.message.reply_text("Restarting via systemd...")
+            await asyncio.sleep(0.5)
+            log.info("Restarting via systemctl --user restart claude-telegram-bot")
+            subprocess.Popen(  # noqa: S603
+                ["systemctl", "--user", "restart", "claude-telegram-bot"],
+                start_new_session=True,
+            )
+            sys.exit(0)
+        else:
+            # Dev mode: re-exec the current Python process in-place
+            await update.message.reply_text("Restarting bot process...")
+            await asyncio.sleep(0.5)
+            log.info("Restarting via os.execv (not running under systemd)")
+            os.execv(sys.executable, [sys.executable] + sys.argv)
 
     async def agentic_repo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """List repos in workspace or switch to one.
