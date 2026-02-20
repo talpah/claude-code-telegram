@@ -41,6 +41,32 @@ from .exceptions import (
 logger = structlog.get_logger()
 
 
+# ── Monkey-patch SDK message parser ──────────────────────────────────────────
+# claude-agent-sdk 0.1.38/0.1.39 throws MessageParseError for rate_limit_event
+# messages, which breaks the response iterator and loses ResultMessage.
+# Patch parse_message to return None for unknown types instead of raising.
+def _patch_sdk_message_parser() -> None:
+    try:
+        from claude_agent_sdk._internal import message_parser as _mp
+
+        _original_parse = _mp.parse_message
+
+        def _patched_parse(data: dict) -> Message | None:  # type: ignore[override]
+            try:
+                return _original_parse(data)
+            except Exception:
+                msg_type = data.get("type", "?") if isinstance(data, dict) else "?"
+                logger.debug("SDK: skipping unknown message type", type=msg_type)
+                return None  # type: ignore[return-value]
+
+        _mp.parse_message = _patched_parse
+    except Exception as exc:
+        logger.warning("Failed to patch SDK message parser", error=str(exc))
+
+
+_patch_sdk_message_parser()
+
+
 def find_claude_cli(claude_cli_path: str | None = None) -> str | None:
     """Find Claude CLI in common locations."""
     import glob
@@ -206,55 +232,22 @@ class ClaudeSDKManager:
             async def _run_client() -> None:
                 async with ClaudeSDKClient(options) as client:
                     await client.query(prompt)
-                    
-                    # SDK iterator may throw "Unknown message type" for rate_limit_event.
-                    # Use manual iteration with __anext__() so we can catch and skip problem messages
-                    # while continuing to wait for ResultMessage.
-                    response_iter = client.receive_response()
-                    while True:
-                        try:
-                            message = await response_iter.__anext__()
-                        except StopAsyncIteration:
-                            # Normal end of iterator
-                            logger.debug("Message stream ended normally")
-                            break
-                        except Exception as iter_error:
-                            # Iterator threw exception (e.g. "Unknown message type: rate_limit_event")
-                            # Log and try to continue — there may be more messages after this
-                            logger.debug(
-                                "SDK iterator error, attempting to continue",
-                                error=str(iter_error),
-                                error_type=type(iter_error).__name__,
-                                messages_collected_so_far=len(messages),
-                            )
+                    async for message in client.receive_response():
+                        # Monkey-patched parse_message returns None for unknown types
+                        if message is None:
                             continue
-                        
-                        # Process valid message
-                        try:
-                            if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
-                                message_type = type(message).__name__
-                                logger.debug("Skipping control message", message_type=message_type)
-                                continue
-                            
-                            messages.append(message)
 
-                            # Handle streaming callback
-                            if stream_callback:
-                                try:
-                                    await self._handle_stream_message(message, stream_callback)
-                                except Exception as callback_error:
-                                    logger.warning(
-                                        "Stream callback failed",
-                                        error=str(callback_error),
-                                        error_type=type(callback_error).__name__,
-                                    )
-                        except Exception as process_error:
-                            # Unexpected error processing message
-                            logger.warning(
-                                "Error processing collected message",
-                                error=str(process_error),
-                                error_type=type(process_error).__name__,
-                            )
+                        # Only collect meaningful message types
+                        if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
+                            continue
+
+                        messages.append(message)
+
+                        if stream_callback:
+                            try:
+                                await self._handle_stream_message(message, stream_callback)
+                            except Exception as e:
+                                logger.warning("Stream callback error", error=str(e))
 
             # Execute with timeout
             await asyncio.wait_for(
@@ -268,24 +261,12 @@ class ClaudeSDKManager:
             claude_session_id = None
             result_content = None
             
-            logger.info(
-                "Processing collected messages",
-                total_messages=len(messages),
-                message_types=[type(m).__name__ for m in messages],
-            )
-            
             for message in messages:
                 if isinstance(message, ResultMessage):
                     cost = getattr(message, "total_cost_usd", 0.0) or 0.0
                     claude_session_id = getattr(message, "session_id", None)
                     result_content = getattr(message, "result", None)
                     tools_used = self._extract_tools_from_messages(messages)
-                    logger.info(
-                        "Found ResultMessage",
-                        cost=cost,
-                        session_id=claude_session_id,
-                        result_length=len(result_content) if result_content else 0,
-                    )
                     break
 
             # Calculate duration
@@ -302,21 +283,8 @@ class ClaudeSDKManager:
                 )
 
             # Use ResultMessage.result if available, fall back to message extraction
-            if result_content is not None:
-                logger.info("Using ResultMessage.result", content_length=len(result_content))
-                content = result_content
-            else:
-                logger.warning("ResultMessage not found, extracting from AssistantMessages")
-                content = self._extract_content_from_messages(messages)
+            content = result_content if result_content is not None else self._extract_content_from_messages(messages)
 
-            if not content or not content.strip():
-                logger.error(
-                    "Empty content returned from Claude",
-                    content_length=len(content) if content else 0,
-                    messages_collected=len(messages),
-                    message_types=[type(m).__name__ for m in messages],
-                )
-            
             return ClaudeResponse(
                 content=content,
                 session_id=final_session_id,
@@ -465,42 +433,17 @@ class ClaudeSDKManager:
         """Extract content from message list."""
         content_parts = []
 
-        logger.info("Extracting content from messages", message_count=len(messages))
-
-        for idx, message in enumerate(messages):
+        for message in messages:
             if isinstance(message, AssistantMessage):
                 content = getattr(message, "content", [])
-                logger.info(
-                    "Processing AssistantMessage",
-                    message_index=idx,
-                    content_type=type(content).__name__,
-                    content_length=len(content) if isinstance(content, list) else 0,
-                    content_repr=repr(content)[:200],
-                )
                 if content and isinstance(content, list):
-                    # Extract text from TextBlock objects
-                    for block_idx, block in enumerate(content):
-                        block_type = type(block).__name__
-                        logger.info("Processing block", block_index=block_idx, block_type=block_type)
-                        
+                    for block in content:
                         if hasattr(block, "text"):
-                            text = block.text
-                            logger.info("Found text block", text_length=len(text), text_preview=text[:100])
-                            content_parts.append(text)
-                        elif isinstance(block, dict):
-                            logger.info("Block is dict", keys=list(block.keys()))
-                            if "text" in block:
-                                content_parts.append(block["text"])
-                        else:
-                            logger.info("Block has no text", block_repr=repr(block)[:200])
+                            content_parts.append(block.text)
                 elif content:
-                    # Fallback for non-list content
-                    logger.info("Non-list content", content_str=str(content)[:200])
                     content_parts.append(str(content))
 
-        result = "\n".join(content_parts)
-        logger.info("Content extraction complete", part_count=len(content_parts), result_length=len(result), result_preview=result[:200])
-        return result
+        return "\n".join(content_parts)
 
     def _extract_tools_from_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         """Extract tools used from message list."""
