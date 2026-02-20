@@ -193,6 +193,9 @@ projects_config_path = ""
 user_profile_path = "~/.claude-code-telegram/config/profile.md"
 user_name = ""
 user_timezone = "UTC"
+# Language for bot responses: "auto" detects from user messages, or set explicitly
+# e.g. "English", "Romanian", "French", "ro", "fr", "de"
+preferred_language = "auto"
 
 # ── Voice Transcription ───────────────────────────────────────────────────────
 

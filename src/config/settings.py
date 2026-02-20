@@ -183,6 +183,13 @@ class Settings(BaseSettings):
     user_profile_path: Path | None = Field(None, description="Path to user profile.md for context injection")
     user_name: str | None = Field(None, description="User name for personalization")
     user_timezone: str = Field("UTC", description="User timezone for scheduling and context")
+    preferred_language: str = Field(
+        "auto",
+        description=(
+            "Language for bot responses. 'auto' = detect from user messages. "
+            "Use any language name or code (e.g. 'English', 'Romanian', 'ro', 'fr')."
+        ),
+    )
 
     # Voice transcription
     voice_provider: str | None = Field(None, description="Voice provider: 'groq' or 'local'")

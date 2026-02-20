@@ -50,20 +50,25 @@ Edit it to tell Claude about yourself, your preferences, and your workflow.
 
 ## About Me
 
-- Name: (your name)
-- Timezone: (your timezone, e.g. Europe/Bucharest)
-- Role: (developer / data scientist / etc.)
+- Name:
+- Timezone: (e.g. Europe/Bucharest)
+- Role/Occupation:
 
-## Preferences
+## Goals
 
-- Communication style: concise and technical
-- Code style: (your preferred style, e.g. PEP 8 for Python)
-- Preferred tools: (e.g. uv, ruff, pytest)
+-
 
-## Projects
+## Work Context
 
-- Primary language: (e.g. Python)
-- Current focus: (brief description)
+- Current projects:
+- Tools you use:
+- Preferred programming languages:
+
+## Communication Style
+
+- Response length: concise / detailed
+- Tone: casual / professional
+- Include code examples: yes / no
 """
 
 _MCP_TEMPLATE = """\

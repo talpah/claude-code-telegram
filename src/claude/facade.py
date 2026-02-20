@@ -62,10 +62,10 @@ class ClaudeIntegration:
             force_new=force_new,
         )
 
-        # If no session_id provided, try to find an existing session for this
-        # user+directory combination (auto-resume).
+        # If no session_id provided (or only a temp_* placeholder), try to find an
+        # existing session for this user+directory combination (auto-resume).
         # Skip auto-resume when force_new is set (e.g. after /new command).
-        if not session_id and not force_new:
+        if (not session_id or session_id.startswith("temp_")) and not force_new:
             existing_session = await self._find_resumable_session(user_id, working_directory)
             if existing_session:
                 session_id = existing_session.session_id
@@ -235,8 +235,14 @@ class ClaudeIntegration:
             else:
                 final_session_id = old_session_id
 
-            # Ensure response has the correct session_id
-            response.session_id = final_session_id
+            # Ensure response has the correct session_id.
+            # Never propagate temp_* IDs to callers — they're not resumable and
+            # storing them in user_data would prevent the auto-resume lookup from
+            # running on the next message.
+            if final_session_id and not final_session_id.startswith("temp_"):
+                response.session_id = final_session_id
+            else:
+                response.session_id = ""
 
             logger.info(
                 "Claude command completed",
@@ -290,6 +296,16 @@ class ClaudeIntegration:
             memory_context = await self.memory_manager.build_memory_context(user_id, query=prompt)
             if memory_context:
                 sections.append(memory_context)
+
+        # Language preference
+        lang = getattr(self.config, "preferred_language", "auto")
+        if lang and lang.lower() != "auto":
+            sections.append(f"## Language\nAlways respond in {lang}, regardless of what language the user writes in.")
+        else:
+            sections.append(
+                "## Language\nDetect the language the user writes in and respond in that same language. "
+                "If they switch languages, follow their lead."
+            )
 
         # Current time
         now = datetime.now(UTC)

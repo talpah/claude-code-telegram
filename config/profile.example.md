@@ -1,17 +1,26 @@
-# About You
+# User Profile
+
+This file is injected into Claude's context at the start of every session.
+Edit it to tell Claude about yourself, your preferences, and your workflow.
+
+## About Me
+
 - Name:
-- Timezone:
+- Timezone: (e.g. Europe/Bucharest)
 - Role/Occupation:
 
-# Goals
+## Goals
+
 -
 
-# Work Context
+## Work Context
+
 - Current projects:
 - Tools you use:
-- Preferred languages:
+- Preferred programming languages:
 
-# Communication Style
+## Communication Style
+
 - Response length: concise / detailed
 - Tone: casual / professional
 - Include code examples: yes / no
