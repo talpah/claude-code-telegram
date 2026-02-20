@@ -68,14 +68,19 @@ def extract_core_error(msg: str) -> str:
     """Extract core error message from JSON, stripping metadata fields.
     
     For cascading errors (e.g. same error from 3 layers), extract the
-    'error' field to group related errors together.
+    'error' field to group related errors together. Strips common prefixes
+    like "Claude SDK error: " to deduplicate wrapping layers.
     """
     try:
         data = json.loads(msg)
         if isinstance(data, dict):
             # If there's an "error" field, prioritize that for deduplication
             if "error" in data:
-                return str(data["error"])
+                error_msg = str(data["error"])
+                # Strip common wrapper prefixes to group cascading errors
+                error_msg = re.sub(r"^Claude SDK error:\s*", "", error_msg)
+                error_msg = re.sub(r"^Claude integration failed:\s*", "", error_msg)
+                return error_msg
             
             # Otherwise, rebuild JSON with only non-metadata fields
             core = {k: v for k, v in data.items() if k not in _METADATA_FIELDS}
