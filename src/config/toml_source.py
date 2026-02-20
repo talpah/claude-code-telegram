@@ -107,9 +107,14 @@ SECTION_MAP: dict[str, list[str]] = {
     ],
     "personalization": [
         "user_profile_path",
+        "soul_path",
         "user_name",
         "user_timezone",
         "preferred_language",
+    ],
+    "memory_files": [
+        "memory_file_path",
+        "notes_dir",
     ],
     "voice": [
         "voice_provider",

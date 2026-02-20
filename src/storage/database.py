@@ -352,6 +352,24 @@ class DatabaseManager:
                     ON memory_entries(user_id, entry_type, is_active);
                 """,
             ),
+            (
+                6,
+                """
+                -- Session notes: short-lived per-session context injected on resume
+
+                CREATE TABLE IF NOT EXISTS session_notes (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id INTEGER NOT NULL,
+                    session_id TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (user_id) REFERENCES users(user_id)
+                );
+
+                CREATE INDEX IF NOT EXISTS idx_session_notes_session
+                    ON session_notes(session_id);
+                """,
+            ),
         ]
 
     async def _init_pool(self):

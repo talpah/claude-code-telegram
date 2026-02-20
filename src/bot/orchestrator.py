@@ -977,10 +977,26 @@ class MessageOrchestrator:
                     logger.warning("Failed to log interaction", error=str(e))
 
             # Process memory tags from Claude's response
+            _claude_integration = _bd(context).get("claude_integration")
+            _memory_file_mgr = getattr(_claude_integration, "memory_file_manager", None)
             memory_manager = _bd(context).get("memory_manager")
-            if memory_manager and claude_response.content:
+            if claude_response.content and (memory_manager or _memory_file_mgr):
                 try:
-                    processed = await memory_manager.process_response(user_id, claude_response.content)
+                    if memory_manager:
+                        processed = await memory_manager.process_response(
+                            user_id,
+                            claude_response.content,
+                            memory_file_manager=_memory_file_mgr,
+                            session_id=claude_response.session_id or None,
+                        )
+                    else:
+                        # No SQLite memory — still handle [MEMFILE:] tags
+                        import re as _re
+                        _MEMFILE_RE = _re.compile(r"\[MEMFILE:\s*(.+?)\]", _re.IGNORECASE | _re.DOTALL)
+                        processed = []
+                        for _m in _MEMFILE_RE.finditer(claude_response.content):
+                            _memory_file_mgr.append_entry(_m.group(1).strip())
+                            processed.append(f"memfile: {_m.group(1).strip()[:50]}")
                     if processed:
                         logger.debug("Memory updated", count=len(processed))
                 except Exception as e:

@@ -8,6 +8,13 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from ...config.settings import Settings
 from .html_format import escape_html, markdown_to_telegram_html
 
+# Strip internal memory/state tags that Claude embeds in responses.
+# These are processed server-side and must not leak to Telegram users.
+_SYSTEM_TAG_RE = re.compile(
+    r"\[(?:REMEMBER|GOAL|DONE|MEMFILE|NOTE):\s*.+?\]",
+    re.IGNORECASE | re.DOTALL,
+)
+
 
 @dataclass
 class FormattedMessage:
@@ -393,6 +400,9 @@ class ResponseFormatter:
 
     def _clean_text(self, text: str) -> str:
         """Clean text for Telegram display."""
+        # Strip internal system tags before any other processing
+        text = _SYSTEM_TAG_RE.sub("", text)
+
         # Remove excessive whitespace
         text = re.sub(r"\n{3,}", "\n\n", text)
 

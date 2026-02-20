@@ -181,6 +181,9 @@ class Settings(BaseSettings):
 
     # User profile and personalization
     user_profile_path: Path | None = Field(None, description="Path to user profile.md for context injection")
+    soul_path: Path | None = Field(None, description="Path to soul.md for system_prompt identity injection")
+    memory_file_path: Path | None = Field(None, description="Path to memory.md for curated long-term memory")
+    notes_dir: Path | None = Field(None, description="Path to notes/ directory for topic-specific notes")
     user_name: str | None = Field(None, description="User name for personalization")
     user_timezone: str = Field("UTC", description="User timezone for scheduling and context")
     preferred_language: str = Field(
@@ -290,6 +293,42 @@ class Settings(BaseSettings):
     @classmethod
     def validate_user_profile_path(cls, v: Any) -> Path | None:
         """Expand ~ in user profile path."""
+        if not v:
+            return None
+        if isinstance(v, str):
+            if not v.strip():
+                return None
+            v = Path(v)
+        return Path(v).expanduser().resolve()
+
+    @field_validator("soul_path", mode="before")
+    @classmethod
+    def validate_soul_path(cls, v: Any) -> Path | None:
+        """Expand ~ in soul path."""
+        if not v:
+            return None
+        if isinstance(v, str):
+            if not v.strip():
+                return None
+            v = Path(v)
+        return Path(v).expanduser().resolve()
+
+    @field_validator("memory_file_path", mode="before")
+    @classmethod
+    def validate_memory_file_path(cls, v: Any) -> Path | None:
+        """Expand ~ in memory file path."""
+        if not v:
+            return None
+        if isinstance(v, str):
+            if not v.strip():
+                return None
+            v = Path(v)
+        return Path(v).expanduser().resolve()
+
+    @field_validator("notes_dir", mode="before")
+    @classmethod
+    def validate_notes_dir(cls, v: Any) -> Path | None:
+        """Expand ~ in notes directory path."""
         if not v:
             return None
         if isinstance(v, str):

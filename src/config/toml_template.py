@@ -191,11 +191,24 @@ projects_config_path = ""
 # Path to user profile markdown (injected into Claude's context)
 # Auto-created at ~/.claude-code-telegram/config/profile.md on first run
 user_profile_path = "~/.claude-code-telegram/config/profile.md"
+# Path to soul.md — injected into Claude's system_prompt as identity/persona
+# Auto-created at ~/.claude-code-telegram/config/soul.md on first run
+soul_path = "~/.claude-code-telegram/config/soul.md"
 user_name = ""
 user_timezone = "UTC"
 # Language for bot responses: "auto" detects from user messages, or set explicitly
 # e.g. "English", "Romanian", "French", "ro", "fr", "de"
 preferred_language = "auto"
+
+# ── Memory Files ──────────────────────────────────────────────────────────────
+
+[memory_files]
+# Path to curated long-term memory file (appended via [MEMFILE:] tags)
+# Auto-created at ~/.claude-code-telegram/config/memory.md on first run
+memory_file_path = "~/.claude-code-telegram/config/memory.md"
+# Directory containing per-topic note files (*.md) — injected into context
+# Auto-created at ~/.claude-code-telegram/config/notes/ on first run
+notes_dir = "~/.claude-code-telegram/config/notes"
 
 # ── Voice Transcription ───────────────────────────────────────────────────────
 

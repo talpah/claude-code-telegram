@@ -181,6 +181,7 @@ class ClaudeSDKManager:
         session_id: str | None = None,
         continue_session: bool = False,
         stream_callback: Callable[[StreamUpdate], None] | None = None,
+        soul_content: str | None = None,
     ) -> ClaudeResponse:
         """Execute Claude Code command via SDK."""
         start_time = asyncio.get_event_loop().time()
@@ -207,7 +208,7 @@ class ClaudeSDKManager:
                     "autoAllowBashIfSandboxed": True,
                     "excludedCommands": self.config.sandbox_excluded_commands or [],
                 },
-                system_prompt=(f"All file operations must stay within {working_directory}. Use relative paths."),
+                system_prompt=self._build_system_prompt(working_directory, soul_content),
             )
 
             # Pass MCP server configuration if enabled
@@ -465,6 +466,13 @@ class ClaudeSDKManager:
                             )
 
         return tools_used
+
+    def _build_system_prompt(self, working_directory: Path, soul_content: str | None) -> str:
+        """Compose the system_prompt from soul content and directory constraint."""
+        base = f"All file operations must stay within {working_directory}. Use relative paths."
+        if soul_content:
+            return f"{soul_content}\n\n---\n\n{base}"
+        return base
 
     def _load_mcp_config(self, config_path: Path) -> dict[str, Any]:
         """Load MCP server configuration from a JSON file.

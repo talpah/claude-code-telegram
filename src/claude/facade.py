@@ -18,6 +18,8 @@ from .session import ClaudeSession, SessionManager
 
 if TYPE_CHECKING:
     from ..config.profile import ProfileManager
+    from ..config.soul import SoulManager
+    from ..memory.file_manager import MemoryFileManager
     from ..memory.manager import MemoryManager
 
 logger = structlog.get_logger()
@@ -34,6 +36,8 @@ class ClaudeIntegration:
         tool_monitor: ToolMonitor | None = None,
         profile_manager: "ProfileManager | None" = None,
         memory_manager: "MemoryManager | None" = None,
+        soul_manager: "SoulManager | None" = None,
+        memory_file_manager: "MemoryFileManager | None" = None,
     ):
         """Initialize Claude integration facade."""
         self.config = config
@@ -42,6 +46,8 @@ class ClaudeIntegration:
         self.tool_monitor = tool_monitor
         self.profile_manager = profile_manager
         self.memory_manager = memory_manager
+        self.soul_manager = soul_manager
+        self.memory_file_manager = memory_file_manager
 
     async def run_command(
         self,
@@ -142,7 +148,12 @@ class ClaudeIntegration:
                     logger.warning("Stream callback failed", error=str(e))
 
         # Build enriched prompt (profile + memory + time context)
-        enriched_prompt = await self._build_enriched_prompt(user_id=user_id, prompt=prompt)
+        # Pass the claude session_id so session notes are injected on resume
+        enriched_prompt = await self._build_enriched_prompt(
+            user_id=user_id,
+            prompt=prompt,
+            session_id=session_id,
+        )
 
         # Execute command
         try:
@@ -273,15 +284,22 @@ class ClaudeIntegration:
         stream_callback: Callable | None = None,
     ) -> ClaudeResponse:
         """Execute command via SDK."""
+        soul_content = self.soul_manager.get_soul_content() if self.soul_manager else None
         return await self.sdk_manager.execute_command(
             prompt=prompt,
             working_directory=working_directory,
             session_id=session_id,
             continue_session=continue_session,
             stream_callback=stream_callback,
+            soul_content=soul_content,
         )
 
-    async def _build_enriched_prompt(self, user_id: int, prompt: str) -> str:
+    async def _build_enriched_prompt(
+        self,
+        user_id: int,
+        prompt: str,
+        session_id: str | None = None,
+    ) -> str:
         """Prepend profile, memory, and time context to the user's prompt."""
         sections: list[str] = []
 
@@ -291,11 +309,26 @@ class ClaudeIntegration:
             if profile_context:
                 sections.append(profile_context)
 
-        # Memory context
+        # Semantic memory context (SQLite-backed)
         if self.memory_manager:
             memory_context = await self.memory_manager.build_memory_context(user_id, query=prompt)
             if memory_context:
                 sections.append(memory_context)
+
+        # File-based long-term memory and notes
+        if self.memory_file_manager:
+            file_memory = self.memory_file_manager.get_memory_context()
+            if file_memory:
+                sections.append(f"## Long-Term Memory\n{file_memory}")
+            notes = self.memory_file_manager.get_notes_context()
+            if notes:
+                sections.append(f"## Notes\n{notes}")
+
+        # Session notes (injected on resume)
+        if session_id and not session_id.startswith("temp_") and self.memory_manager:
+            session_notes = await self.memory_manager.build_session_notes_context(session_id)
+            if session_notes:
+                sections.append(session_notes)
 
         # Language preference
         lang = getattr(self.config, "preferred_language", "auto")
@@ -313,14 +346,25 @@ class ClaudeIntegration:
         sections.append(f"## Current Context\nTime: {now.strftime('%Y-%m-%d %H:%M')} UTC (Timezone: {tz})")
 
         # Memory tag instructions
+        tag_instructions: list[str] = []
         if self.memory_manager:
-            sections.append(
-                "## Memory Instructions\n"
-                "When the user shares something worth remembering, include [REMEMBER: fact] in your response.\n"
-                "To track a user goal, include [GOAL: objective].\n"
-                "When a goal is completed, include [DONE: goal description].\n"
-                "These tags will be extracted automatically — the user won't see them."
+            tag_instructions += [
+                "When the user shares something worth remembering, include [REMEMBER: fact] in your response.",
+                "To track a user goal, include [GOAL: objective].",
+                "When a goal is completed, include [DONE: goal description].",
+            ]
+        if self.memory_file_manager:
+            tag_instructions.append(
+                "To save an important fact to persistent memory, include [MEMFILE: fact] in your response."
             )
+        if self.memory_manager:
+            tag_instructions.append(
+                "To leave a note about what you're working on for session continuity, "
+                "include [NOTE: text] in your response."
+            )
+        if tag_instructions:
+            tag_instructions.append("These tags are extracted automatically — the user won't see them.")
+            sections.append("## Memory Instructions\n" + "\n".join(tag_instructions))
 
         if not sections:
             return prompt

@@ -21,6 +21,8 @@ logger = structlog.get_logger()
 _REMEMBER_RE = re.compile(r"\[REMEMBER:\s*(.+?)\]", re.IGNORECASE | re.DOTALL)
 _GOAL_RE = re.compile(r"\[GOAL:\s*(.+?)\]", re.IGNORECASE | re.DOTALL)
 _DONE_RE = re.compile(r"\[DONE:\s*(.+?)\]", re.IGNORECASE | re.DOTALL)
+_MEMFILE_RE = re.compile(r"\[MEMFILE:\s*(.+?)\]", re.IGNORECASE | re.DOTALL)
+_NOTE_RE = re.compile(r"\[NOTE:\s*(.+?)\]", re.IGNORECASE | re.DOTALL)
 
 
 @dataclass
@@ -44,7 +46,7 @@ class MemoryEntry:
 class MemoryIntent:
     """Extracted intent from a Claude response."""
 
-    action: str  # 'remember', 'goal', 'done'
+    action: str  # 'remember', 'goal', 'done', 'memfile', 'note'
     content: str
 
 
@@ -180,7 +182,7 @@ class MemoryManager:
     # --- Response processing ---
 
     def extract_memory_intents(self, response_text: str) -> list[MemoryIntent]:
-        """Scan Claude's response text for [REMEMBER: ...], [GOAL: ...], [DONE: ...] tags."""
+        """Scan Claude's response for [REMEMBER:], [GOAL:], [DONE:], [MEMFILE:], [NOTE:] tags."""
         intents: list[MemoryIntent] = []
         for match in _REMEMBER_RE.finditer(response_text):
             intents.append(MemoryIntent(action="remember", content=match.group(1).strip()))
@@ -188,9 +190,19 @@ class MemoryManager:
             intents.append(MemoryIntent(action="goal", content=match.group(1).strip()))
         for match in _DONE_RE.finditer(response_text):
             intents.append(MemoryIntent(action="done", content=match.group(1).strip()))
+        for match in _MEMFILE_RE.finditer(response_text):
+            intents.append(MemoryIntent(action="memfile", content=match.group(1).strip()))
+        for match in _NOTE_RE.finditer(response_text):
+            intents.append(MemoryIntent(action="note", content=match.group(1).strip()))
         return intents
 
-    async def process_response(self, user_id: int, response_text: str) -> list[str]:
+    async def process_response(
+        self,
+        user_id: int,
+        response_text: str,
+        memory_file_manager: "Any | None" = None,
+        session_id: str | None = None,
+    ) -> list[str]:
         """Extract and process memory intents from a Claude response. Returns descriptions of actions taken."""
         intents = self.extract_memory_intents(response_text)
         processed: list[str] = []
@@ -206,9 +218,44 @@ class MemoryManager:
                     completed = await self.complete_goal(user_id, intent.content)
                     if completed:
                         processed.append(f"completed: {intent.content[:50]}")
+                elif intent.action == "memfile":
+                    if memory_file_manager is not None:
+                        memory_file_manager.append_entry(intent.content)
+                        processed.append(f"memfile: {intent.content[:50]}")
+                elif intent.action == "note":
+                    if session_id and not session_id.startswith("temp_"):
+                        await self._store_session_note(user_id, session_id, intent.content)
+                        processed.append(f"note: {intent.content[:50]}")
             except Exception as e:
                 logger.warning("Failed to process memory intent", action=intent.action, error=str(e))
         return processed
+
+    async def _store_session_note(self, user_id: int, session_id: str, content: str) -> None:
+        """Persist a session note to the database."""
+        async with self.db_manager.get_connection() as conn:
+            await conn.execute(
+                "INSERT INTO session_notes (user_id, session_id, content) VALUES (?, ?, ?)",
+                (user_id, session_id, content),
+            )
+            await conn.commit()
+
+    async def build_session_notes_context(self, session_id: str) -> str:
+        """Build a formatted block of session notes for the given session."""
+        async with self.db_manager.get_connection() as conn:
+            cursor = await conn.execute(
+                "SELECT content, created_at FROM session_notes WHERE session_id = ? ORDER BY created_at",
+                (session_id,),
+            )
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return ""
+
+        lines = ["## Session Notes\nNotes from previous turns in this session:"]
+        for row in rows:
+            d = dict(row)
+            lines.append(f"- {d['content']}")
+        return "\n".join(lines)
 
     # --- Private helpers ---
 

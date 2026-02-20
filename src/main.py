@@ -22,10 +22,12 @@ from src.claude.sdk_integration import ClaudeSDKManager
 from src.config.features import FeatureFlags
 from src.config.profile import ProfileManager
 from src.config.settings import Settings
+from src.config.soul import SoulManager
 from src.events.bus import EventBus
 from src.events.handlers import AgentHandler
 from src.events.middleware import EventSecurityMiddleware
 from src.exceptions import ConfigurationError
+from src.memory.file_manager import MemoryFileManager
 from src.memory.manager import MemoryManager
 from src.notifications.service import NotificationService
 from src.projects import ProjectThreadManager, load_project_registry
@@ -72,6 +74,35 @@ Edit it to tell Claude about yourself, your preferences, and your workflow.
 - Include code examples: yes / no
 """
 
+_SOUL_TEMPLATE = """\
+# Soul
+
+This file defines the assistant's identity and is injected into Claude's system_prompt.
+Edit it to give Claude a consistent persona across all sessions.
+
+## Identity
+
+You are a capable, concise, and reliable assistant operating through Telegram.
+You help with software engineering, DevOps, and general technical tasks.
+
+## Principles
+
+- Be direct and technical. Skip unnecessary preamble.
+- Prefer minimal, working solutions over elaborate ones.
+- When unsure, ask one targeted question rather than guessing.
+- Keep responses focused — the user is on mobile.
+"""
+
+_MEMORY_TEMPLATE = """\
+# Long-Term Memory
+
+This file is your curated long-term memory. It is injected into your context on every session.
+Use [MEMFILE: fact] tags in your responses to append new entries automatically.
+
+## Facts
+
+"""
+
 _MCP_TEMPLATE = """\
 {
   "mcpServers": {
@@ -94,13 +125,28 @@ _MCP_TEMPLATE = """\
 
 
 def _bootstrap_optional_configs(app_home: Path) -> None:
-    """Create profile.md and mcp.json if they don't exist yet."""
+    """Create profile.md, soul.md, memory.md, notes/, and mcp.json if absent."""
     logger = structlog.get_logger()
 
     profile_path = app_home / "config" / "profile.md"
     if not profile_path.exists():
         profile_path.write_text(_PROFILE_TEMPLATE, encoding="utf-8")
         logger.info("Created default profile.md", path=str(profile_path))
+
+    soul_path = app_home / "config" / "soul.md"
+    if not soul_path.exists():
+        soul_path.write_text(_SOUL_TEMPLATE, encoding="utf-8")
+        logger.info("Created default soul.md", path=str(soul_path))
+
+    memory_path = app_home / "config" / "memory.md"
+    if not memory_path.exists():
+        memory_path.write_text(_MEMORY_TEMPLATE, encoding="utf-8")
+        logger.info("Created default memory.md", path=str(memory_path))
+
+    notes_dir = app_home / "config" / "notes"
+    if not notes_dir.exists():
+        notes_dir.mkdir(parents=True, exist_ok=True)
+        logger.info("Created notes directory", path=str(notes_dir))
 
     mcp_path = app_home / "config" / "mcp.json"
     if not mcp_path.exists():
@@ -261,6 +307,27 @@ async def create_application(config: Settings) -> dict[str, Any]:
             _profile_path = _default_profile
     profile_manager = ProfileManager(_profile_path) if _profile_path else None
 
+    # Soul manager — use configured path or fall back to the default soul.md
+    _soul_path = config.soul_path
+    if not _soul_path:
+        _default_soul = APP_HOME / "config" / "soul.md"
+        if _default_soul.exists():
+            _soul_path = _default_soul
+    soul_manager = SoulManager(_soul_path) if _soul_path else None
+
+    # Memory file manager — curated long-term memory.md + notes/ directory
+    _memory_file_path = config.memory_file_path
+    if not _memory_file_path:
+        _default_memory = APP_HOME / "config" / "memory.md"
+        if _default_memory.exists():
+            _memory_file_path = _default_memory
+    _notes_dir = config.notes_dir
+    if not _notes_dir:
+        _default_notes = APP_HOME / "config" / "notes"
+        if _default_notes.exists():
+            _notes_dir = _default_notes
+    memory_file_manager = MemoryFileManager(_memory_file_path, _notes_dir) if _memory_file_path else None
+
     # Memory manager (optional — only active when ENABLE_MEMORY=true)
     memory_manager: MemoryManager | None = None
     if config.enable_memory:
@@ -281,6 +348,8 @@ async def create_application(config: Settings) -> dict[str, Any]:
         tool_monitor=tool_monitor,
         profile_manager=profile_manager,
         memory_manager=memory_manager,
+        soul_manager=soul_manager,
+        memory_file_manager=memory_file_manager,
     )
 
     # --- Event bus and agentic platform components ---
