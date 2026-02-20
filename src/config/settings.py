@@ -205,6 +205,9 @@ class Settings(BaseSettings):
     checkin_quiet_hours_start: int = Field(22, description="Quiet hours start (24h UTC)", ge=0, le=23)
     checkin_quiet_hours_end: int = Field(8, description="Quiet hours end (24h UTC)", ge=0, le=23)
 
+    # Onboarding
+    setup_completed: bool = Field(False, description="Telegram setup wizard completed")
+
     model_config = SettingsConfigDict(
         # Search consolidated home dir first, then fall back to project-root .env
         env_file=[

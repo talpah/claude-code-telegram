@@ -226,6 +226,12 @@ checkin_max_per_day = 3
 # Quiet hours start (24h UTC) — no check-ins sent during quiet hours
 checkin_quiet_hours_start = 22
 checkin_quiet_hours_end = 8
+
+# ── Onboarding ────────────────────────────────────────────────────────────────
+
+[onboarding]
+# Set to true after the Telegram setup wizard completes (managed automatically)
+setup_completed = false
 """
 
 

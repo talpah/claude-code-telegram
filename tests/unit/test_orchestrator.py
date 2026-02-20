@@ -138,13 +138,16 @@ def test_agentic_registers_text_document_photo_voice_handlers(agentic_settings, 
 
 
 async def test_agentic_bot_commands(agentic_settings, deps):
-    """Agentic mode returns 10 bot commands."""
+    """Agentic mode returns 11 bot commands."""
     orchestrator = MessageOrchestrator(agentic_settings, deps)
     commands = await orchestrator.get_bot_commands()
 
-    assert len(commands) == 10
+    assert len(commands) == 11
     cmd_names = [c.command for c in commands]
-    assert cmd_names == ["start", "new", "status", "verbose", "repo", "memory", "model", "reload", "settings", "set"]
+    assert cmd_names == [
+        "start", "new", "status", "verbose", "repo", "memory",
+        "model", "reload", "settings", "set", "setup",
+    ]
 
 
 async def test_classic_bot_commands(classic_settings, deps):

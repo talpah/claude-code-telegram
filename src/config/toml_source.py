@@ -129,6 +129,9 @@ SECTION_MAP: dict[str, list[str]] = {
         "checkin_quiet_hours_start",
         "checkin_quiet_hours_end",
     ],
+    "onboarding": [
+        "setup_completed",
+    ],
 }
 
 # Inverse lookup: field_name → section_name

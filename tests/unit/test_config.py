@@ -193,6 +193,11 @@ def test_mcp_config_validation(tmp_path, monkeypatch):
     monkeypatch.delenv("ENABLE_MCP", raising=False)
     monkeypatch.delenv("MCP_CONFIG_PATH", raising=False)
 
+    # Isolate from the real filesystem: the validator auto-discovers
+    # ~/.claude-code-telegram/config/mcp.json, so patch home to tmp_path
+    # to ensure that file doesn't exist during these tests.
+    monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
     # Should fail when MCP enabled but no config path
     with pytest.raises(ValidationError) as exc_info:
         Settings(
