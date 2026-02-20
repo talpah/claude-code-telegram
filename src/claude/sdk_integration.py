@@ -207,51 +207,54 @@ class ClaudeSDKManager:
                 async with ClaudeSDKClient(options) as client:
                     await client.query(prompt)
                     
-                    # SDK iterator may throw on rate_limit_event. Catch and continue
-                    # to collect as many meaningful messages as possible.
-                    try:
-                        async for message in client.receive_response():
-                            try:
-                                # Only process meaningful message types; skip control/status messages
-                                # (RateLimitMessage, etc)
-                                if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
-                                    message_type = type(message).__name__
-                                    logger.debug("Skipping control message", message_type=message_type)
-                                    continue
-                                
-                                messages.append(message)
-
-                                # Handle streaming callback
-                                if stream_callback:
-                                    try:
-                                        await self._handle_stream_message(message, stream_callback)
-                                    except Exception as callback_error:
-                                        logger.warning(
-                                            "Stream callback failed",
-                                            error=str(callback_error),
-                                            error_type=type(callback_error).__name__,
-                                        )
-                            except Exception as message_error:
-                                # SDK may throw "Unknown message type" when creating message objects
-                                # for control messages like rate_limit_event. Skip and continue.
-                                logger.debug(
-                                    "Skipping unparseable message from SDK",
-                                    error=str(message_error),
-                                    error_type=type(message_error).__name__,
-                                )
+                    # SDK iterator may throw "Unknown message type" for rate_limit_event.
+                    # Use manual iteration with __anext__() so we can catch and skip problem messages
+                    # while continuing to wait for ResultMessage.
+                    response_iter = client.receive_response()
+                    while True:
+                        try:
+                            message = await response_iter.__anext__()
+                        except StopAsyncIteration:
+                            # Normal end of iterator
+                            logger.debug("Message stream ended normally")
+                            break
+                        except Exception as iter_error:
+                            # Iterator threw exception (e.g. "Unknown message type: rate_limit_event")
+                            # Log and try to continue — there may be more messages after this
+                            logger.debug(
+                                "SDK iterator error, attempting to continue",
+                                error=str(iter_error),
+                                error_type=type(iter_error).__name__,
+                                messages_collected_so_far=len(messages),
+                            )
+                            continue
+                        
+                        # Process valid message
+                        try:
+                            if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
+                                message_type = type(message).__name__
+                                logger.debug("Skipping control message", message_type=message_type)
                                 continue
-                    except StopAsyncIteration:
-                        # Normal end of iterator — all good
-                        logger.debug("Message stream ended normally")
-                    except Exception as receive_error:
-                        # Iterator threw an exception (e.g. rate_limit_event at the end)
-                        # Log but continue — we've collected what we could
-                        logger.warning(
-                            "SDK message stream exception (expected for rate_limit_event)",
-                            error=str(receive_error),
-                            error_type=type(receive_error).__name__,
-                            messages_collected_so_far=len(messages),
-                        )
+                            
+                            messages.append(message)
+
+                            # Handle streaming callback
+                            if stream_callback:
+                                try:
+                                    await self._handle_stream_message(message, stream_callback)
+                                except Exception as callback_error:
+                                    logger.warning(
+                                        "Stream callback failed",
+                                        error=str(callback_error),
+                                        error_type=type(callback_error).__name__,
+                                    )
+                        except Exception as process_error:
+                            # Unexpected error processing message
+                            logger.warning(
+                                "Error processing collected message",
+                                error=str(process_error),
+                                error_type=type(process_error).__name__,
+                            )
 
             # Execute with timeout
             await asyncio.wait_for(
