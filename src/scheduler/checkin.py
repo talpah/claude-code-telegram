@@ -7,6 +7,7 @@ When Claude decides YES, publishes an AgentResponseEvent to the EventBus.
 
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -78,14 +79,22 @@ class CheckInService:
         try:
             now = datetime.now(UTC)
 
-            today_str = now.strftime("%Y-%m-%d")
+            tz_str = self.settings.user_timezone or "UTC"
+            try:
+                tz = ZoneInfo(tz_str)
+            except ZoneInfoNotFoundError:
+                logger.warning("Unknown user_timezone, falling back to UTC", timezone=tz_str)
+                tz = ZoneInfo("UTC")
+            now_local = now.astimezone(tz)
+
+            today_str = now_local.strftime("%Y-%m-%d")
             if today_str != self._last_reset_date:
                 self._checkin_count_today = 0
                 self._last_reset_date = today_str
 
             quiet_start = self.settings.checkin_quiet_hours_start
             quiet_end = self.settings.checkin_quiet_hours_end
-            hour = now.hour
+            hour = now_local.hour
             # Handle wrap-around (e.g. 22-8 spans midnight)
             if quiet_start > quiet_end:
                 if hour >= quiet_start or hour < quiet_end:
@@ -111,8 +120,8 @@ class CheckInService:
                     goals_str = "; ".join(g.content[:60] for g in goals[:5])
 
             prompt = _DECISION_PROMPT.format(
-                time=now.strftime("%H:%M"),
-                day_of_week=now.strftime("%A"),
+                time=now_local.strftime("%H:%M"),
+                day_of_week=now_local.strftime("%A"),
                 hours=hours_since,
                 goals=goals_str,
                 count=self._checkin_count_today,
