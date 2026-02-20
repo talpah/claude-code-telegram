@@ -134,8 +134,8 @@ def test_agentic_registers_text_document_photo_voice_handlers(agentic_settings, 
 
     # 5 message handlers (text, document, photo, voice/audio, location)
     assert len(msg_handlers) == 5
-    # 2 callback handlers (cd: and set:)
-    assert len(cb_handlers) == 2
+    # 3 callback handlers (voice:confirm:, cd:, set:)
+    assert len(cb_handlers) == 3
 
 
 async def test_agentic_bot_commands(agentic_settings, deps):
@@ -290,8 +290,10 @@ async def test_agentic_callback_scoped_to_cd_pattern(agentic_settings, deps):
         call[0][0] for call in app.add_handler.call_args_list if isinstance(call[0][0], CallbackQueryHandler)
     ]
 
-    assert len(cb_handlers) == 2
+    assert len(cb_handlers) == 3
     patterns = [h.pattern for h in cb_handlers]
+    # voice:confirm: handler matches destructive voice confirmations
+    assert any(p is not None and p.match("voice:confirm:yes") for p in patterns)
     # cd: handler matches project directory switches
     assert any(p is not None and p.match("cd:my_project") for p in patterns)
     # set: handler matches settings menu callbacks

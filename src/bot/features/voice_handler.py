@@ -11,6 +11,7 @@ Usage:
 
 import asyncio
 import tempfile
+import time
 from pathlib import Path
 
 import structlog
@@ -67,6 +68,8 @@ class VoiceHandler:
 
             wav_path = ogg_path.with_suffix(".wav")
 
+            t_start = time.monotonic()
+
             # Convert OGG -> 16kHz mono WAV
             ffmpeg_proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
@@ -87,6 +90,8 @@ class VoiceHandler:
             if ffmpeg_proc.returncode != 0:
                 raise RuntimeError("ffmpeg conversion failed")
 
+            duration_secs = wav_path.stat().st_size / (16000 * 2) if wav_path.exists() else 0.0
+
             # Run whisper.cpp
             cmd = [self.config.whisper_binary, "-f", str(wav_path), "-otxt"]
             if self.config.whisper_model_path:
@@ -106,7 +111,16 @@ class VoiceHandler:
             if not txt_path.exists():
                 raise RuntimeError("Whisper output file not found after transcription")
 
-            return txt_path.read_text(encoding="utf-8").strip()
+            text = txt_path.read_text(encoding="utf-8").strip()
+            elapsed = time.monotonic() - t_start
+            logger.info(
+                "Whisper transcription complete",
+                duration_secs=round(duration_secs, 2),
+                elapsed_secs=round(elapsed, 2),
+                binary=self.config.whisper_binary,
+                text_preview=text[:80],
+            )
+            return text
 
         finally:
             for path in [ogg_path, wav_path, txt_path]:

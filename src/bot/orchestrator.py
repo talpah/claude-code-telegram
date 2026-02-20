@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import structlog
-from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 from telegram.ext import (
     Application,
     CallbackQueryHandler,
@@ -34,6 +34,23 @@ from .utils.html_format import escape_html
 logger = structlog.get_logger()
 
 _RESTART_NOTIFY_FILE = APP_HOME / "data" / "restart_notify.json"
+
+# Keywords that suggest a potentially destructive or hazardous action in voice input.
+# Used to trigger a confirmation step before sending to Claude.
+_DESTRUCTIVE_KEYWORDS: frozenset[str] = frozenset({
+    "delete", "deleted", "deleting",
+    "remove", "removed", "removing",
+    "erase", "erased", "erasing",
+    "drop", "dropped", "dropping",
+    "destroy", "destroyed", "destroying",
+    "wipe", "wiped", "wiping",
+    "purge", "purged", "purging",
+    "reset", "revert", "rollback",
+    "discard", "overwrite", "truncate",
+    "format", "uninstall",
+    "kill", "terminate",
+    "force", "hard",  # "force push", "hard reset"
+})
 
 
 def _write_restart_notify(chat_id: int, message_thread_id: int | None) -> None:
@@ -358,6 +375,14 @@ class MessageOrchestrator:
         app.add_handler(
             MessageHandler(filters.LOCATION, self._inject_deps(self.agentic_location)),
             group=10,
+        )
+
+        # voice: callbacks — confirm/cancel destructive voice actions
+        app.add_handler(
+            CallbackQueryHandler(
+                self._inject_deps(self._voice_confirm_callback),
+                pattern=r"^voice:confirm:",
+            )
         )
 
         # cd: callbacks — switch directory / resume session
@@ -787,8 +812,29 @@ class MessageOrchestrator:
             await progress_msg.edit_text(f"Voice transcription failed: {e}")
             return
 
-        await progress_msg.delete()
+        user = update.effective_user
+        display_name = escape_html(user.first_name or user.username or "User")
+        await progress_msg.edit_text(
+            f"{display_name} 🎤: <i>{escape_html(transcribed)}</i>", parse_mode="HTML"
+        )
+
         prompt = f"🎤 Voice: {transcribed}"
+        words = frozenset(transcribed.lower().split())
+        if words & _DESTRUCTIVE_KEYWORDS:
+            _ud(context)["pending_voice_prompt"] = prompt
+            keyboard = InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✅ Yes, proceed", callback_data="voice:confirm:yes"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="voice:confirm:no"),
+                ]
+            ])
+            await update.message.reply_text(
+                "⚠️ This voice message may request a destructive or hazardous action.\n"
+                "Due to transcription uncertainty, please confirm you want to proceed.",
+                reply_markup=keyboard,
+            )
+            return
+
         await self._run_agentic_prompt(update, context, prompt)
 
     async def agentic_location(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -845,9 +891,12 @@ class MessageOrchestrator:
         update: Update,
         context: ContextTypes.DEFAULT_TYPE,
         prompt: str,
+        *,
+        reply_to: Message | None = None,
     ) -> None:
         """Execute a prompt through Claude and deliver the response. Shared by text and voice handlers."""
-        assert update.message is not None
+        msg = reply_to or update.message
+        assert msg is not None
         assert update.effective_user is not None
         user_id = update.effective_user.id
 
@@ -858,14 +907,14 @@ class MessageOrchestrator:
         if rate_limiter:
             allowed, limit_message = await rate_limiter.check_rate_limit(user_id, 0.0)
             if not allowed:
-                await update.message.reply_text(f"⏱️ {limit_message}")
+                await msg.reply_text(f"⏱️ {limit_message}")
                 return
 
-        chat = update.message.chat
+        chat = msg.chat
         await chat.send_action("typing")
 
         verbose_level = self._get_verbose_level(context)
-        progress_msg = await update.message.reply_text("Working...")
+        progress_msg = await msg.reply_text("Working...")
 
         claude_integration = _bd(context).get("claude_integration")
         if not claude_integration:
@@ -1638,6 +1687,27 @@ class MessageOrchestrator:
             parse_mode="HTML",
             reply_markup=reply_markup,
         )
+
+    async def _voice_confirm_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle voice:confirm: callbacks — confirm or cancel a potentially destructive voice action."""
+        query = update.callback_query
+        assert query is not None
+        assert query.message is not None
+        await query.answer()
+
+        action = (query.data or "").split(":")[-1]  # "yes" or "no"
+
+        if action == "no":
+            await query.edit_message_text("Cancelled.")
+            return
+
+        prompt = _ud(context).pop("pending_voice_prompt", None)
+        if not prompt:
+            await query.edit_message_text("Session expired — please send the voice message again.")
+            return
+
+        await query.edit_message_text("Confirmed. Processing...")
+        await self._run_agentic_prompt(update, context, prompt, reply_to=query.message)
 
     async def _agentic_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle cd: callbacks — switch directory and resume session if available."""
