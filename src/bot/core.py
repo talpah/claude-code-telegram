@@ -8,6 +8,7 @@ Features:
 """
 
 import asyncio
+import json
 from collections.abc import Callable
 from typing import Any, cast
 
@@ -22,10 +23,33 @@ from telegram.ext import (
 
 from ..config.settings import Settings
 from ..exceptions import ClaudeCodeTelegramError
+from ..utils.constants import APP_HOME
 from .features.registry import FeatureRegistry
 from .orchestrator import MessageOrchestrator
 
 logger = structlog.get_logger()
+
+_RESTART_NOTIFY_FILE = APP_HOME / "data" / "restart_notify.json"
+
+
+async def _send_restart_notification(app: Application) -> None:  # type: ignore[type-arg]
+    """If a restart-notify file exists, send 'Bot restarted.' to the saved chat."""
+    if not _RESTART_NOTIFY_FILE.exists():
+        return
+    try:
+        data = json.loads(_RESTART_NOTIFY_FILE.read_text(encoding="utf-8"))
+        chat_id: int = data["chat_id"]
+        thread_id: int | None = data.get("message_thread_id")
+        await app.bot.send_message(
+            chat_id=chat_id,
+            text="Bot restarted.",
+            message_thread_id=thread_id,
+        )
+        logger.info("Sent restart notification", chat_id=chat_id)
+    except Exception:
+        logger.exception("Failed to send restart notification")
+    finally:
+        _RESTART_NOTIFY_FILE.unlink(missing_ok=True)
 
 
 class ClaudeCodeBot:
@@ -207,6 +231,8 @@ class ClaudeCodeBot:
                     allowed_updates=Update.ALL_TYPES,
                     drop_pending_updates=True,
                 )
+
+                await _send_restart_notification(self.app)
 
                 # Keep running until manually stopped
                 while self.is_running:

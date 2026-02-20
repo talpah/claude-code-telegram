@@ -6,6 +6,7 @@ classic mode, delegates to existing full-featured handlers.
 """
 
 import asyncio
+import json
 import re
 import time
 from collections.abc import Callable
@@ -27,9 +28,21 @@ from ..claude.exceptions import ClaudeToolValidationError
 from ..claude.sdk_integration import StreamUpdate
 from ..config.settings import Settings
 from ..projects import PrivateTopicsUnavailableError
+from ..utils.constants import APP_HOME
 from .utils.html_format import escape_html
 
 logger = structlog.get_logger()
+
+_RESTART_NOTIFY_FILE = APP_HOME / "data" / "restart_notify.json"
+
+
+def _write_restart_notify(chat_id: int, message_thread_id: int | None) -> None:
+    """Persist restart-notification target so the bot can message on next startup."""
+    _RESTART_NOTIFY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    _RESTART_NOTIFY_FILE.write_text(
+        json.dumps({"chat_id": chat_id, "message_thread_id": message_thread_id}),
+        encoding="utf-8",
+    )
 
 
 def _bd(context: ContextTypes.DEFAULT_TYPE) -> dict[str, Any]:
@@ -1467,6 +1480,7 @@ class MessageOrchestrator:
             await update.message.reply_text("Restarting via systemd...")
             await asyncio.sleep(0.5)
             log.info("Restarting via systemctl --user restart claude-telegram-bot")
+            _write_restart_notify(update.message.chat_id, update.message.message_thread_id)
             subprocess.Popen(  # noqa: S603
                 ["systemctl", "--user", "restart", "claude-telegram-bot"],
                 start_new_session=True,
