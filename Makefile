@@ -1,5 +1,5 @@
 .PHONY: install dev test lint format clean help run \
-        install-service uninstall-service start stop restart status logs watchdog-logs monitor-logs
+        install-service uninstall-service start stop restart status logs watchdog-logs monitor-logs all-logs
 
 # Default target
 SYSTEMD_USER_DIR=$(HOME)/.config/systemd/user
@@ -25,6 +25,7 @@ help:
 	@echo "  logs             Tail bot logs"
 	@echo "  watchdog-logs    Tail watchdog logs"
 	@echo "  monitor-logs     Tail log monitor logs"
+	@echo "  all-logs         Tail all three logs interleaved"
 
 install:
 	uv sync --no-group dev
@@ -102,3 +103,6 @@ watchdog-logs:
 
 monitor-logs:
 	journalctl --user -fu claude-log-monitor
+
+all-logs:
+	journalctl --user -fu claude-telegram-bot -u claude-telegram-watchdog -u claude-log-monitor
