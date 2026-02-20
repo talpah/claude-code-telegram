@@ -109,6 +109,7 @@ SECTION_MAP: dict[str, list[str]] = {
         "user_profile_path",
         "user_name",
         "user_timezone",
+        "preferred_language",
     ],
     "voice": [
         "voice_provider",

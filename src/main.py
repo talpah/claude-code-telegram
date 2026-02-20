@@ -41,6 +41,7 @@ from src.security.rate_limiter import RateLimiter
 from src.security.validators import SecurityValidator
 from src.storage.facade import Storage
 from src.storage.session_storage import SQLiteSessionStorage
+from src.utils.constants import APP_HOME
 
 _PROFILE_TEMPLATE = """\
 # User Profile
@@ -110,8 +111,6 @@ def _bootstrap_optional_configs(app_home: Path) -> None:
 def bootstrap_dirs() -> None:
     """Create ~/.claude-code-telegram/ directory layout and migrate legacy files."""
     import shutil
-
-    from src.utils.constants import APP_HOME
 
     dirs = [
         APP_HOME / "config",
@@ -254,8 +253,13 @@ async def create_application(config: Settings) -> dict[str, Any]:
     logger.info("Using Claude Python SDK integration")
     sdk_manager = ClaudeSDKManager(config)
 
-    # Profile manager (optional — only active when USER_PROFILE_PATH is set)
-    profile_manager = ProfileManager(config.user_profile_path) if config.user_profile_path else None
+    # Profile manager — use configured path or fall back to the default profile.md
+    _profile_path = config.user_profile_path
+    if not _profile_path:
+        _default_profile = APP_HOME / "config" / "profile.md"
+        if _default_profile.exists():
+            _profile_path = _default_profile
+    profile_manager = ProfileManager(_profile_path) if _profile_path else None
 
     # Memory manager (optional — only active when ENABLE_MEMORY=true)
     memory_manager: MemoryManager | None = None

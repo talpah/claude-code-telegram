@@ -20,6 +20,20 @@ from ...config.settings import Settings
 
 logger = structlog.get_logger()
 
+# Maps display language names (lowercase) → ISO 639-1 codes accepted by whisper.cpp
+_WHISPER_LANG_MAP: dict[str, str] = {
+    "english": "en",
+    "romanian": "ro",
+    "french": "fr",
+    "german": "de",
+    "spanish": "es",
+    "italian": "it",
+    "portuguese": "pt",
+    "dutch": "nl",
+    "polish": "pl",
+    "russian": "ru",
+}
+
 
 class VoiceHandler:
     """Transcribe Telegram voice/audio messages to text."""
@@ -92,17 +106,33 @@ class VoiceHandler:
 
             duration_secs = wav_path.stat().st_size / (16000 * 2) if wav_path.exists() else 0.0
 
-            # Run whisper.cpp
-            cmd = [self.config.whisper_binary, "-f", str(wav_path), "-otxt"]
+            # Resolve whisper language: map display name → ISO code, "auto" → None
+            lang_setting = getattr(self.config, "preferred_language", "auto") or "auto"
+            whisper_lang: str | None = None
+            if lang_setting.lower() != "auto":
+                key = lang_setting.lower()
+                whisper_lang = _WHISPER_LANG_MAP.get(key, key)  # use as-is if already a code
+
+            # Build whisper.cpp command
+            cmd = [self.config.whisper_binary]
             if self.config.whisper_model_path:
-                cmd = [self.config.whisper_binary, "-m", self.config.whisper_model_path, "-f", str(wav_path), "-otxt"]
+                cmd += ["-m", self.config.whisper_model_path]
+            cmd += ["-f", str(wav_path), "--task", "transcribe", "-otxt"]
+            if whisper_lang:
+                cmd += ["-l", whisper_lang]
 
             whisper_proc = await asyncio.create_subprocess_exec(
                 *cmd,
                 stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.PIPE,
             )
-            await whisper_proc.communicate()
+            _, stderr_bytes = await whisper_proc.communicate()
+            if whisper_proc.returncode != 0:
+                stderr_text = (stderr_bytes or b"").decode(errors="replace").strip()
+                raise RuntimeError(
+                    f"whisper.cpp exited with code {whisper_proc.returncode}"
+                    + (f": {stderr_text[:200]}" if stderr_text else "")
+                )
 
             # Whisper outputs <wavfile>.txt
             txt_path = wav_path.with_suffix(".wav.txt")

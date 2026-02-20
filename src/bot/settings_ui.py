@@ -14,6 +14,7 @@ Callback data scheme (prefix ``set:``):
 
 from __future__ import annotations
 
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -114,9 +115,22 @@ def apply_setting(
     field_type = field_def.get("type", "str") if field_def else "str"
     env_key = field_def["env_key"] if field_def else field.upper()
 
+    # Check if the Settings model field is a list type (e.g. allowed_paths)
+    model_field = Settings.model_fields.get(field)
+    annotation = model_field.annotation if model_field else None
+    is_list_field = typing.get_origin(annotation) is list
+
     # Coerce to correct Python type
-    if field_type == "bool":
-        typed_value: Any = value if isinstance(value, bool) else str(value).lower() in ("true", "1", "yes")
+    if is_list_field:
+        # Accept "path1,path2" or "[path1, path2]" or an existing list
+        if isinstance(value, list):
+            typed_value: Any = value
+        else:
+            raw = str(value).strip("[]")
+            typed_value = [v.strip() for v in raw.split(",") if v.strip()]
+        str_value = ",".join(str(v) for v in typed_value)
+    elif field_type == "bool":
+        typed_value = value if isinstance(value, bool) else str(value).lower() in ("true", "1", "yes")
         str_value = "true" if typed_value else "false"
     elif field_type == "int":
         typed_value = int(value)
