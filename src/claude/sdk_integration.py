@@ -465,33 +465,41 @@ class ClaudeSDKManager:
         """Extract content from message list."""
         content_parts = []
 
-        logger.debug("Extracting content from messages", message_count=len(messages))
+        logger.info("Extracting content from messages", message_count=len(messages))
 
         for idx, message in enumerate(messages):
             if isinstance(message, AssistantMessage):
                 content = getattr(message, "content", [])
-                logger.debug(
+                logger.info(
                     "Processing AssistantMessage",
                     message_index=idx,
                     content_type=type(content).__name__,
                     content_length=len(content) if isinstance(content, list) else 0,
+                    content_repr=repr(content)[:200],
                 )
                 if content and isinstance(content, list):
                     # Extract text from TextBlock objects
-                    for block in content:
+                    for block_idx, block in enumerate(content):
+                        block_type = type(block).__name__
+                        logger.info("Processing block", block_index=block_idx, block_type=block_type)
+                        
                         if hasattr(block, "text"):
                             text = block.text
-                            logger.debug("Found text block", text_length=len(text))
+                            logger.info("Found text block", text_length=len(text), text_preview=text[:100])
                             content_parts.append(text)
+                        elif isinstance(block, dict):
+                            logger.info("Block is dict", keys=list(block.keys()))
+                            if "text" in block:
+                                content_parts.append(block["text"])
                         else:
-                            logger.debug("Block has no text attribute", block_type=type(block).__name__)
+                            logger.info("Block has no text", block_repr=repr(block)[:200])
                 elif content:
                     # Fallback for non-list content
-                    logger.debug("Non-list content", content_str=str(content)[:100])
+                    logger.info("Non-list content", content_str=str(content)[:200])
                     content_parts.append(str(content))
 
         result = "\n".join(content_parts)
-        logger.debug("Content extraction complete", part_count=len(content_parts), result_length=len(result))
+        logger.info("Content extraction complete", part_count=len(content_parts), result_length=len(result), result_preview=result[:200])
         return result
 
     def _extract_tools_from_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
