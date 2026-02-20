@@ -115,6 +115,7 @@ class MessageOrchestrator:
     def __init__(self, settings: Settings, deps: dict[str, Any]):
         self.settings = settings
         self.deps = deps
+        self._start_time = time.monotonic()
 
     def _inject_deps(self, handler: Callable) -> Callable:
         """Wrap handler to inject dependencies into _bd(context)."""
@@ -299,6 +300,7 @@ class MessageOrchestrator:
             ("model", self.agentic_model),
             ("reload", self.agentic_reload),
             ("settings", self.agentic_settings),
+            ("set", self.agentic_set),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -408,6 +410,7 @@ class MessageOrchestrator:
                 BotCommand("model", "Show or change Claude model"),
                 BotCommand("reload", "Restart the bot process"),
                 BotCommand("settings", "Interactive settings menu (owner only)"),
+                BotCommand("set", "Set a setting value (owner only)"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -467,13 +470,23 @@ class MessageOrchestrator:
         current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
         dir_display = f"<code>{current_dir}/</code>"
 
+        from .settings_ui import is_owner
+
         safe_name = escape_html(user.first_name)
+        setup_hint = ""
+        if is_owner(user.id, self.settings) and not self.settings.anthropic_api_key_str:
+            setup_hint = (
+                "\n\n<b>Setup tip:</b> Add your Anthropic API key via "
+                "<code>/set anthropic_api_key sk-ant-...</code> or edit "
+                "<code>~/.claude-code-telegram/config/settings.toml</code>."
+            )
+
         await update.message.reply_text(
             f"Hi {safe_name}! I'm your AI coding assistant.\n"
             f"Just tell me what you need — I can read, write, and run code.\n\n"
             f"Working in: {dir_display}\n"
-            f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload · /settings"
-            f"{sync_line}",
+            f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload · /settings · /set"
+            f"{sync_line}{setup_hint}",
             parse_mode="HTML",
         )
 
@@ -487,16 +500,36 @@ class MessageOrchestrator:
         await update.message.reply_text("Session reset. What's next?")
 
     async def agentic_status(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-        """Compact one-line status, no buttons."""
+        """Status: compact one-liner for users, rich dashboard for owner."""
         assert update.message is not None
         assert update.effective_user is not None
+
+        from src import __version__
+
+        from . import settings_ui
+
         current_dir = _ud(context).get("current_directory", self.settings.approved_directory)
-        dir_display = str(current_dir)
+
+        if settings_ui.is_owner(update.effective_user.id, self.settings):
+            from .status_builder import build_owner_status
+
+            storage = _bd(context).get("storage")
+            rate_limiter = _bd(context).get("rate_limiter")
+            text = await build_owner_status(
+                settings=self.settings,
+                storage=storage,
+                rate_limiter=rate_limiter,
+                user_id=update.effective_user.id,
+                current_dir=current_dir,
+                start_monotonic=self._start_time,
+                version=__version__,
+            )
+            await update.message.reply_text(text, parse_mode="HTML")
+            return
 
         session_id = _ud(context).get("claude_session_id")
         session_status = "active" if session_id else "none"
 
-        # Cost info
         cost_str = ""
         rate_limiter = _bd(context).get("rate_limiter")
         if rate_limiter:
@@ -508,7 +541,10 @@ class MessageOrchestrator:
             except Exception:
                 pass
 
-        await update.message.reply_text(f"📂 {dir_display} · Session: {session_status}{cost_str}")
+        await update.message.reply_text(
+            f"📂 {escape_html(str(current_dir))} · Session: {session_status}{cost_str}",
+            parse_mode="HTML",
+        )
 
     def _get_verbose_level(self, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Return effective verbose level: per-user override or global default."""
@@ -1313,6 +1349,86 @@ class MessageOrchestrator:
             await query.edit_message_text(f"{cat.get('label', cat_key)} Settings", reply_markup=kb)
 
         # action == "noop": display-only button, nothing to do
+
+    async def agentic_set(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """/set <key> [value] — set a text-based setting (owner only).
+
+        /set                   → list all settable fields
+        /set <key>             → show current value
+        /set <key> <value>     → update the setting
+        /set allowed_paths /a,/b  → comma-separated list values
+        """
+        assert update.message is not None
+        assert update.effective_user is not None
+
+        from .settings_ui import apply_setting, is_owner
+
+        if not is_owner(update.effective_user.id, self.settings):
+            await update.message.reply_text("Owner only.")
+            return
+
+        raw = (update.message.text or "").strip()
+        parts = raw.split(None, 2)  # ["/set", key?, value?]
+        args = parts[1:]
+
+        if not args:
+            # Show all fields accessible via /set
+            lines = ["<b>/set — text-based settings</b>\n", "Usage: <code>/set &lt;key&gt; &lt;value&gt;</code>\n"]
+            for field in self.settings.model_fields:
+                val = getattr(self.settings, field, None)
+                if isinstance(val, (str, int, float, bool, list)) or val is None:
+                    display = str(val) if val is not None else "(not set)"
+                    lines.append(f"<code>{field}</code> = {escape_html(display[:60])}")
+            await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+            return
+
+        key = args[0].strip()
+        if key not in self.settings.model_fields:
+            await update.message.reply_text(
+                f"Unknown setting: <code>{escape_html(key)}</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        if len(args) < 2:
+            # Show current value
+            current = getattr(self.settings, key, None)
+            await update.message.reply_text(
+                f"<code>{escape_html(key)}</code> = <code>{escape_html(str(current))}</code>",
+                parse_mode="HTML",
+            )
+            return
+
+        value = args[1].strip()
+        from .settings_ui import resolve_env_file
+
+        env_path = resolve_env_file()
+        try:
+            change = apply_setting(self.settings, env_path, key, value)
+        except Exception as e:
+            await update.message.reply_text(
+                f"Failed to set <code>{escape_html(key)}</code>: {escape_html(str(e))}",
+                parse_mode="HTML",
+            )
+            return
+
+        if key == "claude_model":
+            _ud(context)["claude_session_id"] = None
+            _ud(context)["force_new_session"] = True
+
+        await update.message.reply_text(
+            f"Updated: {escape_html(change)}",
+            parse_mode="HTML",
+        )
+
+        audit_logger = _bd(context).get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_command(
+                user_id=update.effective_user.id,
+                command="set",
+                args=[key, value[:50]],
+                success=True,
+            )
 
     async def agentic_reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """/reload — restart the bot process in-place to pick up code/config changes."""

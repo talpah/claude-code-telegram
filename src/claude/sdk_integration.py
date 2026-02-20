@@ -253,11 +253,7 @@ class ClaudeSDKManager:
                 )
 
             # Use ResultMessage.result if available, fall back to message extraction
-            content = (
-                result_content
-                if result_content is not None
-                else self._extract_content_from_messages(messages)
-            )
+            content = result_content if result_content is not None else self._extract_content_from_messages(messages)
 
             return ClaudeResponse(
                 content=content,
@@ -348,7 +344,15 @@ class ClaudeSDKManager:
                 raise ClaudeProcessError(f"Unexpected error: {str(e)}")
 
     async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], Any]) -> None:
-        """Handle streaming message from claude-agent-sdk."""
+        """Handle streaming message from claude-agent-sdk.
+        
+        Supports:
+        - AssistantMessage
+        - UserMessage
+        - ResultMessage
+        - RateLimitMessage
+        - Unknown message types (logged but not surfaced)
+        """
         try:
             if isinstance(message, AssistantMessage):
                 # Extract content from assistant message
@@ -392,6 +396,15 @@ class ClaudeSDKManager:
                         content=content,
                     )
                     await stream_callback(update)
+            
+            else:
+                # Handle other message types gracefully (rate_limit_event, etc)
+                message_type = type(message).__name__
+                logger.debug(
+                    "Ignoring non-user/assistant message type",
+                    message_type=message_type,
+                    message=str(message)[:100],
+                )
 
         except Exception as e:
             logger.warning("Stream callback failed", error=str(e))

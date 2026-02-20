@@ -26,7 +26,7 @@ def test_settings_validation_required_fields(monkeypatch):
     required_fields = {error["loc"][0] for error in errors}
     assert "telegram_bot_token" in required_fields
     assert "telegram_bot_username" in required_fields
-    assert "approved_directory" in required_fields
+    # approved_directory now has a default — no longer required
 
 
 def test_settings_with_valid_data(tmp_path):
@@ -43,6 +43,41 @@ def test_settings_with_valid_data(tmp_path):
     assert settings.telegram_token_str == "test_token"
     assert settings.telegram_bot_username == "test_bot"
     assert settings.approved_directory == test_dir
+
+
+def test_all_allowed_paths_merges_directories(tmp_path):
+    """all_allowed_paths merges approved_directory + allowed_paths without duplicates."""
+    base = tmp_path / "base"
+    extra = tmp_path / "extra"
+    base.mkdir()
+    extra.mkdir()
+
+    settings = Settings(
+        telegram_bot_token="t",
+        telegram_bot_username="b",
+        approved_directory=str(base),
+        allowed_paths=[str(extra)],
+    )
+    assert settings.all_allowed_paths == [base, extra]
+    # No duplicates when approved_directory is also in allowed_paths
+    settings2 = Settings(
+        telegram_bot_token="t",
+        telegram_bot_username="b",
+        approved_directory=str(base),
+        allowed_paths=[str(base), str(extra)],
+    )
+    assert settings2.all_allowed_paths == [base, extra]
+
+
+def test_approved_directory_has_default(monkeypatch):
+    """approved_directory is optional and defaults to a Path within the user home."""
+    monkeypatch.delenv("APPROVED_DIRECTORY", raising=False)
+    settings = Settings(
+        telegram_bot_token="t",
+        telegram_bot_username="b",
+    )
+    # Should be some directory, not raise
+    assert settings.approved_directory.is_dir()
 
 
 def test_allowed_users_parsing():
@@ -93,16 +128,18 @@ def test_security_relaxation_settings_defaults_and_overrides():
         assert overridden.disable_tool_validation is True
 
 
-def test_approved_directory_validation_nonexistent():
-    """Test validation fails for non-existent directory."""
-    with pytest.raises(ValidationError) as exc_info:
-        Settings(
-            telegram_bot_token="test_token",
-            telegram_bot_username="test_bot",
-            approved_directory="/nonexistent/directory",
-        )
+def test_approved_directory_validation_nonexistent(tmp_path):
+    """approved_directory is created automatically if it doesn't exist."""
+    new_dir = tmp_path / "auto_created"
+    assert not new_dir.exists()
 
-    assert "does not exist" in str(exc_info.value)
+    settings = Settings(
+        telegram_bot_token="test_token",
+        telegram_bot_username="test_bot",
+        approved_directory=str(new_dir),
+    )
+    assert new_dir.exists()
+    assert settings.approved_directory == new_dir
 
 
 def test_approved_directory_validation_not_directory(tmp_path):

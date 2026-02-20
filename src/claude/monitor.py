@@ -69,12 +69,12 @@ _FIND_MUTATING_ACTIONS: set[str] = {"-delete", "-exec", "-execdir", "-ok", "-okd
 def check_bash_directory_boundary(
     command: str,
     working_directory: Path,
-    approved_directory: Path,
+    approved_directories: list[Path],
 ) -> tuple[bool, str | None]:
-    """Check if a bash command's absolute paths stay within the approved directory.
+    """Check if a bash command's absolute paths stay within allowed directories.
 
     Returns (True, None) if the command is safe, or (False, error_message) if it
-    attempts to write outside the approved directory boundary.
+    attempts to write outside all approved directory boundaries.
     """
     try:
         tokens = shlex.split(command)
@@ -102,8 +102,8 @@ def check_bash_directory_boundary(
         # Only check filesystem-modifying commands
         return True, None
 
-    # Check each argument for paths outside the boundary
-    resolved_approved = approved_directory.resolve()
+    # Resolve all approved directories once
+    resolved_approved = [d.resolve() for d in approved_directories]
 
     for token in tokens[1:]:
         # Skip flags
@@ -118,16 +118,23 @@ def check_bash_directory_boundary(
         else:
             resolved = (working_directory / token).resolve()
 
-        try:
-            resolved.relative_to(resolved_approved)
-        except ValueError:
+        in_any_approved = any(_path_within(resolved, approved) for approved in resolved_approved)
+        if not in_any_approved:
             return False, (
                 f"Directory boundary violation: '{base_command}' targets "
-                f"'{token}' which is outside approved directory "
-                f"'{resolved_approved}'"
+                f"'{token}' which is outside approved directories"
             )
 
     return True, None
+
+
+def _path_within(path: Path, directory: Path) -> bool:
+    """Return True if *path* is within *directory*."""
+    try:
+        path.relative_to(directory)
+        return True
+    except ValueError:
+        return False
 
 
 class ToolMonitor:
@@ -273,7 +280,12 @@ class ToolMonitor:
                     return False, f"Dangerous command pattern detected: {pattern}"
 
             # Check directory boundary for filesystem-modifying commands
-            valid, error = check_bash_directory_boundary(command, working_directory, self.config.approved_directory)
+            allowed_dirs = (
+                self.config.all_allowed_paths
+                if hasattr(self.config, "all_allowed_paths")
+                else [self.config.approved_directory]
+            )
+            valid, error = check_bash_directory_boundary(command, working_directory, allowed_dirs)
             if not valid:
                 violation = {
                     "type": "directory_boundary_violation",

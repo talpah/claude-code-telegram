@@ -24,189 +24,15 @@ from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 from ..config.settings import Settings
 from ..config.toml_source import FIELD_TO_SECTION
 from ..utils.constants import APP_HOME
+from .settings_registry import MODEL_CHOICES, SETTINGS_CATEGORIES
 
 # ── Type aliases ──────────────────────────────────────────────────────────────
 
 _FieldDef = dict[str, Any]
 _CategoryDef = dict[str, Any]
 
-# ── Model choices for the picker (alias → full model ID) ─────────────────────
-
-MODEL_CHOICES: dict[str, str] = {
-    "opus": "claude-opus-4-6",
-    "sonnet": "claude-sonnet-4-6",
-    "sonnet45": "claude-sonnet-4-5",
-    "haiku": "claude-haiku-4-5",
-    "opus3": "claude-3-opus-20240229",
-    "sonnet3": "claude-3-5-sonnet-20241022",
-    "haiku3": "claude-3-5-haiku-20241022",
-}
-
-# ── Declarative settings registry ─────────────────────────────────────────────
-
-SETTINGS_CATEGORIES: dict[str, _CategoryDef] = {
-    "claude": {
-        "label": "🤖 Claude",
-        "fields": {
-            "claude_model": {
-                "label": "Model",
-                "type": "choice",
-                "choices": MODEL_CHOICES,
-                "env_key": "CLAUDE_MODEL",
-            },
-            "claude_max_turns": {
-                "label": "Max turns",
-                "type": "int",
-                "min": 1,
-                "max": 50,
-                "step": 5,
-                "env_key": "CLAUDE_MAX_TURNS",
-            },
-            "claude_timeout_seconds": {
-                "label": "Timeout (s)",
-                "type": "int",
-                "min": 30,
-                "max": 900,
-                "step": 30,
-                "env_key": "CLAUDE_TIMEOUT_SECONDS",
-            },
-            "verbose_level": {
-                "label": "Verbose",
-                "type": "int",
-                "min": 0,
-                "max": 2,
-                "step": 1,
-                "env_key": "VERBOSE_LEVEL",
-            },
-        },
-    },
-    "features": {
-        "label": "🔧 Features",
-        "fields": {
-            "enable_mcp": {
-                "label": "MCP",
-                "type": "bool",
-                "env_key": "ENABLE_MCP",
-            },
-            "enable_git_integration": {
-                "label": "Git integration",
-                "type": "bool",
-                "env_key": "ENABLE_GIT_INTEGRATION",
-            },
-            "enable_file_uploads": {
-                "label": "File uploads",
-                "type": "bool",
-                "env_key": "ENABLE_FILE_UPLOADS",
-            },
-            "agentic_mode": {
-                "label": "Agentic mode",
-                "type": "bool",
-                "env_key": "AGENTIC_MODE",
-            },
-        },
-    },
-    "limits": {
-        "label": "⚡ Limits",
-        "fields": {
-            "rate_limit_requests": {
-                "label": "Rate limit (req)",
-                "type": "int",
-                "min": 1,
-                "max": 100,
-                "step": 5,
-                "env_key": "RATE_LIMIT_REQUESTS",
-            },
-            "rate_limit_window": {
-                "label": "Rate window (s)",
-                "type": "int",
-                "min": 10,
-                "max": 300,
-                "step": 10,
-                "env_key": "RATE_LIMIT_WINDOW",
-            },
-            "claude_max_cost_per_user": {
-                "label": "Max cost/user ($)",
-                "type": "float",
-                "min": 1.0,
-                "max": 100.0,
-                "step": 1.0,
-                "env_key": "CLAUDE_MAX_COST_PER_USER",
-            },
-        },
-    },
-    "security": {
-        "label": "🔒 Security",
-        "fields": {
-            "sandbox_enabled": {
-                "label": "Sandbox",
-                "type": "bool",
-                "env_key": "SANDBOX_ENABLED",
-            },
-            "disable_security_patterns": {
-                "label": "Disable security patterns",
-                "type": "bool",
-                "env_key": "DISABLE_SECURITY_PATTERNS",
-            },
-            "disable_tool_validation": {
-                "label": "Disable tool validation",
-                "type": "bool",
-                "env_key": "DISABLE_TOOL_VALIDATION",
-            },
-        },
-    },
-    "memory": {
-        "label": "🧠 Memory",
-        "fields": {
-            "enable_memory": {
-                "label": "Enable memory",
-                "type": "bool",
-                "env_key": "ENABLE_MEMORY",
-            },
-            "memory_max_facts": {
-                "label": "Max facts",
-                "type": "int",
-                "min": 10,
-                "max": 200,
-                "step": 10,
-                "env_key": "MEMORY_MAX_FACTS",
-            },
-            "memory_max_context_items": {
-                "label": "Max context items",
-                "type": "int",
-                "min": 1,
-                "max": 30,
-                "step": 5,
-                "env_key": "MEMORY_MAX_CONTEXT_ITEMS",
-            },
-        },
-    },
-    "checkins": {
-        "label": "📋 Check-ins",
-        "fields": {
-            "enable_checkins": {
-                "label": "Enable check-ins",
-                "type": "bool",
-                "env_key": "ENABLE_CHECKINS",
-            },
-            "checkin_interval_minutes": {
-                "label": "Interval (min)",
-                "type": "int",
-                "min": 5,
-                "max": 120,
-                "step": 5,
-                "env_key": "CHECKIN_INTERVAL_MINUTES",
-            },
-            "checkin_max_per_day": {
-                "label": "Max per day",
-                "type": "int",
-                "min": 0,
-                "max": 20,
-                "step": 1,
-                "env_key": "CHECKIN_MAX_PER_DAY",
-            },
-        },
-    },
-}
+# Re-export for backwards compat
+__all__ = ["MODEL_CHOICES", "SETTINGS_CATEGORIES"]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -412,6 +238,18 @@ def build_category_keyboard(cat_key: str, settings: Settings) -> InlineKeyboardM
                 [
                     InlineKeyboardButton(f"{label}: {display}", callback_data="set:noop"),
                     InlineKeyboardButton("Change", callback_data=f"set:choose:{field_name}"),
+                ]
+            )
+
+        elif field_type == "display":
+            # Non-interactive: show current value with /set hint
+            val_str = str(current_val) if current_val is not None else "(not set)"
+            if len(val_str) > 30:
+                val_str = val_str[:27] + "..."
+            rows.append(
+                [
+                    InlineKeyboardButton(f"{label}: {val_str}", callback_data="set:noop"),
+                    InlineKeyboardButton("/set", callback_data="set:noop"),
                 ]
             )
 

@@ -48,6 +48,7 @@ Documentation = "https://github.com/talpah/claude-code-telegram/blob/main/docs/"
 
 [project.scripts]
 claude-telegram-bot = "src.main:run"
+claude-telegram-setup = "src.config.wizard:main"
 
 [dependency-groups]
 dev = [

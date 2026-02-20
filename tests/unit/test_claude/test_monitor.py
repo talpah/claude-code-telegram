@@ -12,7 +12,7 @@ class TestCheckBashDirectoryBoundary:
     """Test the check_bash_directory_boundary function."""
 
     def setup_method(self) -> None:
-        self.approved = Path("/root/projects")
+        self.approved = [Path("/root/projects")]
         self.cwd = Path("/root/projects/myapp")
 
     def test_mkdir_outside_approved_directory(self) -> None:
@@ -106,6 +106,20 @@ class TestCheckBashDirectoryBoundary:
         valid, error = check_bash_directory_boundary("ln -s /root/projects/file /tmp/link", self.cwd, self.approved)
         assert not valid
         assert "/tmp/link" in error
+
+    def test_multi_path_allows_second_directory(self) -> None:
+        """Target in second allowed directory is permitted."""
+        approved = [Path("/root/projects"), Path("/tmp/extra")]
+        valid, error = check_bash_directory_boundary("mkdir /tmp/extra/subdir", self.cwd, approved)
+        assert valid
+        assert error is None
+
+    def test_multi_path_blocks_outside_all(self) -> None:
+        """Target outside ALL allowed directories is blocked."""
+        approved = [Path("/root/projects"), Path("/tmp/extra")]
+        valid, error = check_bash_directory_boundary("mkdir /var/evil", self.cwd, approved)
+        assert not valid
+        assert "directory boundary violation" in error.lower()
 
     # --- find command handling ---
 

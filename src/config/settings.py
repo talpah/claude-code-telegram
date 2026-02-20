@@ -36,7 +36,14 @@ class Settings(BaseSettings):
     telegram_bot_username: str = Field(..., description="Bot username without @")
 
     # Security
-    approved_directory: Path = Field(..., description="Base directory for projects")
+    approved_directory: Path = Field(
+        default_factory=lambda: Path.home() / ".claude-code-telegram",
+        description="Primary workspace directory (default: ~/.claude-code-telegram)",
+    )
+    allowed_paths: list[Path] = Field(
+        default_factory=list,
+        description="Additional directories where Claude can read/write",
+    )
     allowed_users: list[int] | None = Field(None, description="Allowed Telegram user IDs")
     enable_token_auth: bool = Field(False, description="Enable token-based authentication")
     auth_token_secret: SecretStr | None = Field(None, description="Secret for auth tokens")
@@ -93,7 +100,7 @@ class Settings(BaseSettings):
         description="Enable OS-level bash sandboxing for approved dir",
     )
     sandbox_excluded_commands: list[str] | None = Field(
-        default=["git", "npm", "pip", "poetry", "make", "docker"],
+        default=["git", "npm", "pip", "poetry", "make", "docker", "uv"],
         description="Commands that run outside the sandbox (need system access)",
     )
 
@@ -235,19 +242,51 @@ class Settings(BaseSettings):
             return [str(tool) for tool in v]
         return v
 
-    @field_validator("approved_directory")
+    @field_validator("approved_directory", mode="before")
     @classmethod
     def validate_approved_directory(cls, v: Any) -> Path:
-        """Ensure approved directory exists and is absolute."""
+        """Ensure approved directory exists, creating it if needed."""
         if isinstance(v, str):
-            v = Path(v)
-
-        path = v.resolve()
-        if not path.exists():
-            raise ValueError(f"Approved directory does not exist: {path}")
-        if not path.is_dir():
+            if not v.strip():
+                v = Path.home() / ".claude-code-telegram"
+            else:
+                v = Path(v)
+        path = Path(v).expanduser().resolve()
+        if path.exists() and not path.is_dir():
             raise ValueError(f"Approved directory is not a directory: {path}")
+        path.mkdir(parents=True, exist_ok=True)
         return path
+
+    @field_validator("allowed_paths", mode="before")
+    @classmethod
+    def validate_allowed_paths(cls, v: Any) -> list[Path]:
+        """Expand and resolve each allowed path, validating existence."""
+        if not v:
+            return []
+        if isinstance(v, str):
+            parts = [p.strip() for p in v.split(",") if p.strip()]
+            v = parts
+        result: list[Path] = []
+        for p in v:
+            path = Path(p).expanduser().resolve()
+            if not path.exists():
+                raise ValueError(f"Allowed path does not exist: {path}")
+            if not path.is_dir():
+                raise ValueError(f"Allowed path is not a directory: {path}")
+            result.append(path)
+        return result
+
+    @field_validator("user_profile_path", mode="before")
+    @classmethod
+    def validate_user_profile_path(cls, v: Any) -> Path | None:
+        """Expand ~ in user profile path."""
+        if not v:
+            return None
+        if isinstance(v, str):
+            if not v.strip():
+                return None
+            v = Path(v)
+        return Path(v).expanduser().resolve()
 
     @field_validator("mcp_config_path", mode="before")
     @classmethod
@@ -336,9 +375,13 @@ class Settings(BaseSettings):
         if self.enable_token_auth and not self.auth_token_secret:
             raise ValueError("auth_token_secret required when enable_token_auth is True")
 
-        # Check MCP requirements
+        # Check MCP requirements — auto-discover default if not set
         if self.enable_mcp and not self.mcp_config_path:
-            raise ValueError("mcp_config_path required when enable_mcp is True")
+            default_mcp = Path.home() / ".claude-code-telegram" / "config" / "mcp.json"
+            if default_mcp.exists():
+                self.mcp_config_path = default_mcp
+            else:
+                raise ValueError("mcp_config_path required when enable_mcp is True")
 
         if self.enable_project_threads:
             if self.project_threads_mode == "group" and self.project_threads_chat_id is None:
@@ -366,6 +409,17 @@ class Settings(BaseSettings):
             TomlSettingsSource(settings_cls),  # settings.toml (primary config)
             dotenv_settings,  # .env legacy fallback
         )
+
+    @property
+    def all_allowed_paths(self) -> list[Path]:
+        """Merged list of approved_directory + allowed_paths (deduplicated)."""
+        seen: set[Path] = set()
+        result: list[Path] = []
+        for p in [self.approved_directory, *self.allowed_paths]:
+            if p not in seen:
+                seen.add(p)
+                result.append(p)
+        return result
 
     @property
     def is_production(self) -> bool:

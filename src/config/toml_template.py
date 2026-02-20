@@ -48,8 +48,6 @@ _TEMPLATE = """\
 telegram_bot_token = ""
 # Bot username without @
 telegram_bot_username = ""
-# Absolute path to the workspace directory (the "sandbox")
-approved_directory = ""
 # Telegram user IDs allowed to use the bot. Example: [123456789, 987654321]
 allowed_users = []
 
@@ -91,7 +89,11 @@ claude_disallowed_tools = []
 # OS-level bash sandboxing for the approved directory. [live]
 sandbox_enabled = true
 # Commands exempt from sandboxing (need system access)
-sandbox_excluded_commands = ["git", "npm", "pip", "poetry", "make", "docker"]
+sandbox_excluded_commands = ["git", "npm", "pip", "poetry", "make", "docker", "uv"]
+# Primary workspace directory (default: ~/.claude-code-telegram)
+approved_directory = ""
+# Additional directories where Claude can read and write
+allowed_paths = []
 
 # ── Security ──────────────────────────────────────────────────────────────────
 
@@ -129,6 +131,7 @@ agentic_mode = true
 # Enable Model Context Protocol (requires mcp_config_path)
 enable_mcp = false
 # Path to MCP configuration JSON file
+# Auto-created at ~/.claude-code-telegram/config/mcp.json on first run
 mcp_config_path = ""
 enable_git_integration = true
 enable_file_uploads = true
@@ -186,7 +189,8 @@ projects_config_path = ""
 
 [personalization]
 # Path to user profile markdown (injected into Claude's context)
-user_profile_path = ""
+# Auto-created at ~/.claude-code-telegram/config/profile.md on first run
+user_profile_path = "~/.claude-code-telegram/config/profile.md"
 user_name = ""
 user_timezone = "UTC"
 

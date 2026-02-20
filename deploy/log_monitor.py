@@ -373,12 +373,24 @@ def _parse_journal_line(raw: str) -> tuple[str, str] | None:
     if not message:
         return None
 
+    # Ensure message is a string (journald sometimes includes non-string types)
+    if not isinstance(message, str):
+        try:
+            message = json.dumps(message)
+        except Exception:
+            message = str(message)
+
     # Try to parse the bot's embedded JSON payload to extract log level
     level = "unknown"
     try:
         inner = json.loads(message)
         if isinstance(inner, dict):
-            level = (inner.get("level") or "unknown").lower()
+            level_val = inner.get("level") or "unknown"
+            # Handle case where level itself might be a list or other type
+            if isinstance(level_val, str):
+                level = level_val.lower()
+            else:
+                level = str(level_val).lower()
     except (json.JSONDecodeError, TypeError):
         pass  # plain-text message — pass through without level filtering
 
@@ -404,6 +416,10 @@ def _log(msg: str) -> None:
 
 
 def process_line(line: str, state: dict[str, Any]) -> None:
+    # Ensure line is a string (sometimes JSON fields are lists/dicts, not strings)
+    if not isinstance(line, str):
+        line = str(line)
+    
     norm = normalize(line)
     h = err_hash(norm)
     now = time.time()

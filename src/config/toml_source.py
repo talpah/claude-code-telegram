@@ -30,7 +30,6 @@ SECTION_MAP: dict[str, list[str]] = {
     "required": [
         "telegram_bot_token",
         "telegram_bot_username",
-        "approved_directory",
         "allowed_users",
     ],
     "auth": [
@@ -51,6 +50,8 @@ SECTION_MAP: dict[str, list[str]] = {
     "sandbox": [
         "sandbox_enabled",
         "sandbox_excluded_commands",
+        "approved_directory",
+        "allowed_paths",
     ],
     "security": [
         "disable_security_patterns",
@@ -177,6 +178,14 @@ class TomlSettingsSource(PydanticBaseSettingsSource):
                 if raw == "" or raw == []:
                     continue
                 flat[field_name] = raw
+
+        # Backwards compat: approved_directory may be in [required] in old configs
+        if "approved_directory" not in flat:
+            required_table = doc.get("required")
+            if required_table and "approved_directory" in required_table:
+                raw = _unwrap(required_table["approved_directory"])
+                if raw != "" and raw != []:
+                    flat["approved_directory"] = raw
 
         return flat
 

@@ -42,6 +42,65 @@ from src.security.validators import SecurityValidator
 from src.storage.facade import Storage
 from src.storage.session_storage import SQLiteSessionStorage
 
+_PROFILE_TEMPLATE = """\
+# User Profile
+
+This file is injected into Claude's context at the start of every session.
+Edit it to tell Claude about yourself, your preferences, and your workflow.
+
+## About Me
+
+- Name: (your name)
+- Timezone: (your timezone, e.g. Europe/Bucharest)
+- Role: (developer / data scientist / etc.)
+
+## Preferences
+
+- Communication style: concise and technical
+- Code style: (your preferred style, e.g. PEP 8 for Python)
+- Preferred tools: (e.g. uv, ruff, pytest)
+
+## Projects
+
+- Primary language: (e.g. Python)
+- Current focus: (brief description)
+"""
+
+_MCP_TEMPLATE = """\
+{
+  "mcpServers": {
+    "_example_filesystem": {
+      "_comment": "Remove _example_ prefix and adjust path to enable",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/path/to/directory"]
+    },
+    "_example_github": {
+      "_comment": "Remove _example_ prefix and set GITHUB_PERSONAL_ACCESS_TOKEN env var",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": ""
+      }
+    }
+  }
+}
+"""
+
+
+def _bootstrap_optional_configs(app_home: Path) -> None:
+    """Create profile.md and mcp.json if they don't exist yet."""
+    logger = structlog.get_logger()
+
+    profile_path = app_home / "config" / "profile.md"
+    if not profile_path.exists():
+        profile_path.write_text(_PROFILE_TEMPLATE, encoding="utf-8")
+        logger.info("Created default profile.md", path=str(profile_path))
+
+    mcp_path = app_home / "config" / "mcp.json"
+    if not mcp_path.exists():
+        mcp_path.write_text(_MCP_TEMPLATE, encoding="utf-8")
+        logger.info("Created default mcp.json template", path=str(mcp_path))
+
 
 def bootstrap_dirs() -> None:
     """Create ~/.claude-code-telegram/ directory layout and migrate legacy files."""
@@ -80,6 +139,9 @@ def bootstrap_dirs() -> None:
 
     if not migrate_env_to_toml():
         ensure_toml_config()
+
+    # Bootstrap optional config files (profile.md, mcp.json)
+    _bootstrap_optional_configs(APP_HOME)
 
 
 def setup_logging(debug: bool = False) -> None:
@@ -126,6 +188,12 @@ def parse_args() -> argparse.Namespace:
 
     parser.add_argument("--config-file", type=Path, help="Path to configuration file")
 
+    parser.add_argument(
+        "--no-wizard",
+        action="store_true",
+        help="Skip the interactive setup wizard even if config is incomplete",
+    )
+
     return parser.parse_args()
 
 
@@ -163,7 +231,7 @@ async def create_application(config: Settings) -> dict[str, Any]:
 
     auth_manager = AuthenticationManager(providers)
     security_validator = SecurityValidator(
-        config.approved_directory,
+        config.all_allowed_paths,
         disable_security_patterns=config.disable_security_patterns,
     )
     rate_limiter = RateLimiter(config)
@@ -443,6 +511,13 @@ async def main() -> None:
     try:
         # Bootstrap directory structure and migrate legacy files before loading config
         bootstrap_dirs()
+
+        # Run interactive setup wizard if needed (TTY only, skippable with --no-wizard)
+        if not args.no_wizard and sys.stdin.isatty():
+            from src.config.wizard import TOML_PATH, needs_wizard, run_wizard
+
+            if needs_wizard(TOML_PATH):
+                run_wizard(TOML_PATH)
 
         # Load configuration
         from src.config import FeatureFlags, load_config

@@ -132,13 +132,21 @@ class SecurityValidator:
         r".*\.rar$",  # Archives (potentially dangerous)
     ]
 
-    def __init__(self, approved_directory: Path, disable_security_patterns: bool = False):
-        """Initialize validator with approved directory."""
-        self.approved_directory = approved_directory.resolve()
+    def __init__(
+        self,
+        approved_directories: list[Path] | Path,
+        disable_security_patterns: bool = False,
+    ):
+        """Initialize validator with one or more approved directories."""
+        if isinstance(approved_directories, Path):
+            approved_directories = [approved_directories]
+        self.approved_directories = [d.resolve() for d in approved_directories]
+        # Keep single-path alias for backwards compat summaries
+        self.approved_directory = self.approved_directories[0]
         self.disable_security_patterns = disable_security_patterns
         logger.info(
             "Security validator initialized",
-            approved_directory=str(self.approved_directory),
+            approved_directories=[str(d) for d in self.approved_directories],
             disable_security_patterns=self.disable_security_patterns,
         )
 
@@ -183,13 +191,13 @@ class SecurityValidator:
             # Resolve path and check boundaries
             target = target.resolve()
 
-            # Ensure target is within approved directory
-            if not self._is_within_directory(target, self.approved_directory):
+            # Ensure target is within at least one approved directory
+            if not any(self._is_within_directory(target, d) for d in self.approved_directories):
                 logger.warning(
                     "Path traversal attempt detected",
                     requested_path=user_path,
                     resolved_path=str(target),
-                    approved_directory=str(self.approved_directory),
+                    approved_directories=[str(d) for d in self.approved_directories],
                 )
                 return False, None, "Access denied: path outside approved directory"
 
