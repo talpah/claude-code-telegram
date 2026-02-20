@@ -419,19 +419,34 @@ class ClaudeSDKManager:
         """Extract content from message list."""
         content_parts = []
 
-        for message in messages:
+        logger.debug("Extracting content from messages", message_count=len(messages))
+
+        for idx, message in enumerate(messages):
             if isinstance(message, AssistantMessage):
                 content = getattr(message, "content", [])
+                logger.debug(
+                    "Processing AssistantMessage",
+                    message_index=idx,
+                    content_type=type(content).__name__,
+                    content_length=len(content) if isinstance(content, list) else 0,
+                )
                 if content and isinstance(content, list):
                     # Extract text from TextBlock objects
                     for block in content:
                         if hasattr(block, "text"):
-                            content_parts.append(block.text)
+                            text = block.text
+                            logger.debug("Found text block", text_length=len(text))
+                            content_parts.append(text)
+                        else:
+                            logger.debug("Block has no text attribute", block_type=type(block).__name__)
                 elif content:
                     # Fallback for non-list content
+                    logger.debug("Non-list content", content_str=str(content)[:100])
                     content_parts.append(str(content))
 
-        return "\n".join(content_parts)
+        result = "\n".join(content_parts)
+        logger.debug("Content extraction complete", part_count=len(content_parts), result_length=len(result))
+        return result
 
     def _extract_tools_from_messages(self, messages: list[Message]) -> list[dict[str, Any]]:
         """Extract tools used from message list."""
