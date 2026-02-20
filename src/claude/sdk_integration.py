@@ -207,6 +207,13 @@ class ClaudeSDKManager:
                 async with ClaudeSDKClient(options) as client:
                     await client.query(prompt)
                     async for message in client.receive_response():
+                        # Only process meaningful message types; skip control/status messages
+                        # (RateLimitMessage, etc)
+                        if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
+                            message_type = type(message).__name__
+                            logger.debug("Skipping control message", message_type=message_type)
+                            continue
+                        
                         messages.append(message)
 
                         # Handle streaming callback
@@ -346,12 +353,11 @@ class ClaudeSDKManager:
     async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], Any]) -> None:
         """Handle streaming message from claude-agent-sdk.
         
-        Supports:
-        - AssistantMessage
-        - UserMessage
-        - ResultMessage
-        - RateLimitMessage
-        - Unknown message types (logged but not surfaced)
+        Only receives:
+        - AssistantMessage (from tool execution, reasoning)
+        - UserMessage (confirmation messages)
+        
+        Control messages (RateLimitMessage, etc) are filtered upstream in execute_command().
         """
         try:
             if isinstance(message, AssistantMessage):
@@ -396,15 +402,6 @@ class ClaudeSDKManager:
                         content=content,
                     )
                     await stream_callback(update)
-            
-            else:
-                # Handle other message types gracefully (rate_limit_event, etc)
-                message_type = type(message).__name__
-                logger.debug(
-                    "Ignoring non-user/assistant message type",
-                    message_type=message_type,
-                    message=str(message)[:100],
-                )
 
         except Exception as e:
             logger.warning("Stream callback failed", error=str(e))
