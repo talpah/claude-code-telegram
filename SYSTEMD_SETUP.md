@@ -11,9 +11,9 @@ claude-log-monitor.service       — tails logs, classifies errors, sends Telegr
 ```
 
 **Watchdog behaviour:**
-1. On each bot start, `deploy/backup-config.sh` snapshots `.env` to `data/config-backups/`
+1. On each bot start, `deploy/backup-config.sh` snapshots `.env` to `~/.claude-code-telegram/backups/`
 2. Once the bot has been running for 30 s, the current `.env` is saved as `last-good`
-3. If the bot enters `failed` state and `.env` differs from `last-good`, the bad config is archived to `data/config-backups/failed/` and the last-good config is restored
+3. If the bot enters `failed` state and `.env` differs from `last-good`, the bad config is archived to `~/.claude-code-telegram/backups/failed/` and the last-good config is restored
 4. Bot is restarted; a 60 s cooldown prevents revert loops
 
 ## Quick Setup
@@ -60,17 +60,17 @@ The watchdog tracks the last config known to be stable. To roll back manually:
 
 ```bash
 # See available backups
-ls -lt data/config-backups/
+ls -lt ~/.claude-code-telegram/backups/
 
 # Restore a specific backup
-cp data/config-backups/.env.20260220T143000 .env
+cp ~/.claude-code-telegram/backups/.env.20260220T143000 ~/.claude-code-telegram/config/.env
 make restart
 ```
 
 Failed configs (the ones that caused the bot to crash) are saved separately:
 
 ```bash
-ls data/config-backups/failed/
+ls ~/.claude-code-telegram/backups/failed/
 ```
 
 Keep only the last 20 backups automatically (managed by `deploy/backup-config.sh`).
@@ -113,11 +113,13 @@ loginctl enable-linger $USER
 | `deploy/backup-config.sh` | Runs at ExecStartPre — snapshots .env |
 | `deploy/watchdog.sh` | Watchdog loop script |
 | `deploy/log_monitor.py` | Log monitor script |
-| `data/config-backups/` | Rolling .env backups (last 20) |
-| `data/config-backups/failed/` | Configs that caused bot failures |
-| `data/config-backups/.env.last-good` | Last config confirmed stable (≥30 s uptime) |
-| `~/.claude-code-telegram/monitor_state.json` | Log monitor dedup state |
-| `~/.claude-code-telegram/errors_YYYY-MM-DD.txt` | Daily error log |
+| `~/.claude-code-telegram/config/.env` | Primary config file |
+| `~/.claude-code-telegram/data/bot.db` | SQLite database |
+| `~/.claude-code-telegram/backups/` | Rolling .env backups (last 20) |
+| `~/.claude-code-telegram/backups/failed/` | Configs that caused bot failures |
+| `~/.claude-code-telegram/backups/.env.last-good` | Last config confirmed stable (≥30 s uptime) |
+| `~/.claude-code-telegram/logs/monitor_state.json` | Log monitor dedup state |
+| `~/.claude-code-telegram/logs/errors_YYYY-MM-DD.txt` | Daily error log |
 | `~/.config/systemd/user/` | Installed service files |
 
 ## Log Monitor

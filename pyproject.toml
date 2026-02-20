@@ -2,7 +2,10 @@
 name = "claude-code-telegram"
 version = "1.1.0"
 description = "Telegram bot for remote Claude Code access with comprehensive configuration management"
-authors = [{name = "Richard Atkinson", email = "richardatk01@gmail.com"}]
+authors = [
+    {name = "Richard Atkinson", email = "richardatk01@gmail.com"},
+    {name = "Cosmin Iancu", email = "cosmin@talpah.com"},
+]
 license = {text = "MIT"}
 readme = "README.md"
 requires-python = ">=3.11"
@@ -38,9 +41,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/richardatkinson/claude-code-telegram"
-Repository = "https://github.com/richardatkinson/claude-code-telegram"
-Documentation = "https://github.com/richardatkinson/claude-code-telegram/blob/main/docs/"
+Homepage = "https://github.com/talpah/claude-code-telegram"
+Repository = "https://github.com/talpah/claude-code-telegram"
+Documentation = "https://github.com/talpah/claude-code-telegram/blob/main/docs/"
 
 [project.scripts]
 claude-telegram-bot = "src.main:run"

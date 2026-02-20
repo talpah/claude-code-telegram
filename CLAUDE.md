@@ -94,6 +94,8 @@ Webhook authentication: GitHub HMAC-SHA256 signature verification, generic Beare
 
 ### Configuration
 
+Config file location (priority order): `~/.claude-code-telegram/config/.env` (consolidated home, created on first run) → `./.env` (project root, legacy). On first start, the bot migrates an existing project-root `.env` and `data/bot.db` to `~/.claude-code-telegram/` automatically.
+
 Settings loaded from environment variables via Pydantic Settings. Required: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_BOT_USERNAME`, `APPROVED_DIRECTORY`. Key optional: `ALLOWED_USERS` (comma-separated Telegram IDs), `USE_SDK` (default true), `ANTHROPIC_API_KEY`, `ENABLE_MCP`, `MCP_CONFIG_PATH`.
 
 Agentic platform settings: `AGENTIC_MODE` (default true), `ENABLE_API_SERVER`, `API_SERVER_PORT` (default 8080), `GITHUB_WEBHOOK_SECRET`, `WEBHOOK_API_SECRET`, `ENABLE_SCHEDULER`, `NOTIFICATION_CHAT_IDS`.
@@ -103,6 +105,8 @@ Security relaxation (trusted environments only): `DISABLE_SECURITY_PATTERNS` (de
 Multi-project topics: `ENABLE_PROJECT_THREADS` (default false), `PROJECT_THREADS_MODE` (`private`|`group`), `PROJECT_THREADS_CHAT_ID` (required for group mode), `PROJECTS_CONFIG_PATH` (path to YAML project registry). See `config/projects.example.yaml`.
 
 Output verbosity: `VERBOSE_LEVEL` (default 1, range 0-2). Controls how much of Claude's background activity is shown to the user in real-time. 0 = quiet (only final response, typing indicator still active), 1 = normal (tool names + reasoning snippets shown during execution), 2 = detailed (tool names with input summaries + longer reasoning text). Users can override per-session via `/verbose 0|1|2`. A persistent typing indicator is refreshed every ~2 seconds at all levels.
+
+Interactive settings: `/settings` command (owner only — first `ALLOWED_USERS` entry) opens an inline keyboard menu. Changes are persisted to `.env` immediately via python-dotenv and applied in-memory without restart.
 
 Feature flags in `src/config/features.py` control: MCP, git integration, file uploads, quick actions, session export, image uploads, conversation mode, agentic mode, API server, scheduler.
 
