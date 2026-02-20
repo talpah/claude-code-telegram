@@ -220,9 +220,9 @@ memory_max_context_items = 10
 # Proactive check-ins via Claude (requires enable_scheduler = true). [live]
 enable_checkins = false
 # Evaluation interval in minutes. [live]
-checkin_interval_minutes = 30
+checkin_interval_minutes = 60
 # Maximum proactive check-ins per day. [live]
-checkin_max_per_day = 3
+checkin_max_per_day = 2
 # Quiet hours start (24h UTC) — no check-ins sent during quiet hours
 checkin_quiet_hours_start = 22
 checkin_quiet_hours_end = 8

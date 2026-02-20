@@ -200,8 +200,8 @@ class Settings(BaseSettings):
 
     # Proactive check-ins
     enable_checkins: bool = Field(False, description="Enable proactive check-ins via Claude")
-    checkin_interval_minutes: int = Field(30, description="Check-in evaluation interval in minutes", ge=1)
-    checkin_max_per_day: int = Field(3, description="Max proactive check-ins per day", ge=0)
+    checkin_interval_minutes: int = Field(60, description="Check-in evaluation interval in minutes", ge=1)
+    checkin_max_per_day: int = Field(2, description="Max proactive check-ins per day", ge=0)
     checkin_quiet_hours_start: int = Field(22, description="Quiet hours start (24h UTC)", ge=0, le=23)
     checkin_quiet_hours_end: int = Field(8, description="Quiet hours end (24h UTC)", ge=0, le=23)
 

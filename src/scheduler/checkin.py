@@ -5,7 +5,9 @@ based on their active goals, time since last message, and time of day.
 When Claude decides YES, publishes an AgentResponseEvent to the EventBus.
 """
 
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -16,6 +18,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from ..events.bus import EventBus
 from ..events.types import AgentResponseEvent
 from ..storage.database import DatabaseManager
+
+_STATE_FILE = Path.home() / ".claude-code-telegram" / "checkin_state.json"
 
 if TYPE_CHECKING:
     from ..config.settings import Settings
@@ -31,16 +35,29 @@ Context:
 - Active goals: {goals}
 - Check-ins today: {count}
 
+Check-in archetypes (use as inspiration, adapt freely, or invent your own reason):
+- Morning standup (8-10am): "What's the plan for today?"
+- EOD wrap-up (5-7pm): "What did you ship today? Anything blocked?"
+- Monday kickoff (Monday 8-10am): "What's the focus this week?"
+- Friday retro (Friday 4-6pm): "What went well? What's carrying over to next week?"
+- Stuck check (3+ hours silence, mid-day): "Still working on X? Hit a wall?"
+- Long absence (24+ hours silence): "Back? Happy to pick up where we left off."
+- Deadline nudge (goal mentions an approaching date): remind them
+- Progress check (goal not mentioned in days): "Any movement on X?"
+- Post-deploy follow-up (deploy/push in recent session, 30+ min silence): "Did it land okay?"
+- Long session cooldown (heavy usage, extended silence after): "Good time for a break?"
+
 Rules:
 - Max {max_per_day} check-ins per day
-- Only check in for substantive reasons (deadlines, long silence, progress check)
+- Only check in when there's a clear, concrete reason from the context above
 - Never check in between {quiet_start}:00 and {quiet_end}:00 local time
-- Don't be intrusive — only message if there's real value
+- Don't be intrusive — skip if nothing fits naturally
+- Keep messages short, casual, and specific to the user's actual situation
 
 Respond with EXACTLY this format:
 DECISION: YES or NO
 MESSAGE: <your message to the user, if YES>
-REASON: <why you decided this>"""
+REASON: <which archetype or reason applied>"""
 
 
 class CheckInService:
@@ -59,8 +76,9 @@ class CheckInService:
         self.event_bus = event_bus
         self.db_manager = db_manager
         self.settings = settings
-        self._checkin_count_today: int = 0
-        self._last_reset_date: str = ""
+        state = self._load_state()
+        self._checkin_count_today: int = state.get("count", 0)
+        self._last_reset_date: str = state.get("date", "")
 
     async def start(self, scheduler: AsyncIOScheduler) -> None:
         """Register the check-in evaluation job with an existing APScheduler instance."""
@@ -91,6 +109,7 @@ class CheckInService:
             if today_str != self._last_reset_date:
                 self._checkin_count_today = 0
                 self._last_reset_date = today_str
+                self._save_state()
 
             quiet_start = self.settings.checkin_quiet_hours_start
             quiet_end = self.settings.checkin_quiet_hours_end
@@ -148,9 +167,24 @@ class CheckInService:
                     event = AgentResponseEvent(chat_id=chat_id, text=message, parse_mode=None)
                     await self.event_bus.publish(event)
                 self._checkin_count_today += 1
+                self._save_state()
 
         except Exception as e:
             logger.error("Check-in evaluation failed", error=str(e))
+
+    def _load_state(self) -> dict[str, Any]:
+        if _STATE_FILE.exists():
+            try:
+                return json.loads(_STATE_FILE.read_text())
+            except Exception:
+                pass
+        return {"date": "", "count": 0}
+
+    def _save_state(self) -> None:
+        _STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _STATE_FILE.write_text(
+            json.dumps({"date": self._last_reset_date, "count": self._checkin_count_today}, indent=2)
+        )
 
     async def _hours_since_last_message(self) -> float:
         """Return hours elapsed since the most recent message in the DB."""
