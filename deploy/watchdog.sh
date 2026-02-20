@@ -8,10 +8,18 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_HOME="${HOME}/.claude-code-telegram"
 BOT_SERVICE="claude-telegram-bot"
-ENV_FILE="$PROJECT_DIR/.env"
-LAST_GOOD="$PROJECT_DIR/data/config-backups/.env.last-good"
-FAILED_DIR="$PROJECT_DIR/data/config-backups/failed"
+BACKUP_DIR="${APP_HOME}/backups"
+LAST_GOOD="${BACKUP_DIR}/.env.last-good"
+FAILED_DIR="${BACKUP_DIR}/failed"
+
+# Resolve which .env to watch
+if [[ -f "${APP_HOME}/config/.env" ]]; then
+    ENV_FILE="${APP_HOME}/config/.env"
+else
+    ENV_FILE="$PROJECT_DIR/.env"
+fi
 
 CHECK_INTERVAL=10   # seconds between health checks
 HEALTHY_SECS=30     # uptime required before config is marked stable
@@ -30,7 +38,7 @@ sc() { systemctl --user "$@"; }
 bot_up_since=0
 last_revert=0
 
-log "Watchdog started (service=$BOT_SERVICE, healthy_secs=$HEALTHY_SECS)"
+log "Watchdog started (service=$BOT_SERVICE, env=$ENV_FILE, healthy_secs=$HEALTHY_SECS)"
 
 while true; do
     sleep "$CHECK_INTERVAL"

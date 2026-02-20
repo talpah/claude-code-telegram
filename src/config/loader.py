@@ -15,6 +15,30 @@ from .settings import Settings
 logger = structlog.get_logger()
 
 
+def resolve_env_file(config_file: Path | None = None) -> Path | None:
+    """Find the .env file in priority order.
+
+    1. Explicit config_file argument
+    2. ~/.claude-code-telegram/config/.env (consolidated home)
+    3. ./.env (project root, legacy)
+    4. None (no env file found)
+    """
+    if config_file:
+        return config_file
+
+    from src.utils.constants import APP_HOME
+
+    new_path = APP_HOME / "config" / ".env"
+    if new_path.exists():
+        return new_path
+
+    legacy = Path(".env")
+    if legacy.exists():
+        return legacy
+
+    return None
+
+
 def load_config(env: str | None = None, config_file: Path | None = None) -> Settings:
     """Load configuration based on environment.
 
@@ -29,12 +53,12 @@ def load_config(env: str | None = None, config_file: Path | None = None) -> Sett
         ConfigurationError: If configuration is invalid
     """
     # Load .env file explicitly
-    env_file = config_file or Path(".env")
-    if env_file.exists():
+    env_file = resolve_env_file(config_file)
+    if env_file and env_file.exists():
         logger.info("Loading .env file", path=str(env_file))
         load_dotenv(env_file)
     else:
-        logger.warning("No .env file found", path=str(env_file))
+        logger.warning("No .env file found")
 
     # Determine environment
     env = env or os.getenv("ENVIRONMENT", "development")

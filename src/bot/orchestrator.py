@@ -298,6 +298,7 @@ class MessageOrchestrator:
             ("memory", self.agentic_memory),
             ("model", self.agentic_model),
             ("reload", self.agentic_reload),
+            ("settings", self.agentic_settings),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -332,11 +333,19 @@ class MessageOrchestrator:
             group=10,
         )
 
-        # Only cd: callbacks (for project selection), scoped by pattern
+        # cd: callbacks — switch directory / resume session
         app.add_handler(
             CallbackQueryHandler(
                 self._inject_deps(self._agentic_callback),
                 pattern=r"^cd:",
+            )
+        )
+
+        # set: callbacks — /settings interactive menu
+        app.add_handler(
+            CallbackQueryHandler(
+                self._inject_deps(self._settings_callback),
+                pattern=r"^set:",
             )
         )
 
@@ -398,6 +407,7 @@ class MessageOrchestrator:
                 BotCommand("memory", "Show Claude's memory about you"),
                 BotCommand("model", "Show or change Claude model"),
                 BotCommand("reload", "Restart the bot process"),
+                BotCommand("settings", "Interactive settings menu (owner only)"),
             ]
             if self.settings.enable_project_threads:
                 commands.append(BotCommand("sync_threads", "Sync project topics"))
@@ -462,7 +472,7 @@ class MessageOrchestrator:
             f"Hi {safe_name}! I'm your AI coding assistant.\n"
             f"Just tell me what you need — I can read, write, and run code.\n\n"
             f"Working in: {dir_display}\n"
-            f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload"
+            f"Commands: /new · /status · /verbose · /repo · /memory · /model · /reload · /settings"
             f"{sync_line}",
             parse_mode="HTML",
         )
@@ -1093,8 +1103,7 @@ class MessageOrchestrator:
         memory_manager = _bd(context).get("memory_manager")
         if not memory_manager:
             await update.message.reply_text(
-                "Memory is not enabled.\n\n"
-                "Set <code>ENABLE_MEMORY=true</code> in your <code>.env</code> to activate.",
+                "Memory is not enabled.\n\nSet <code>ENABLE_MEMORY=true</code> in your <code>.env</code> to activate.",
                 parse_mode="HTML",
             )
             return
@@ -1154,8 +1163,7 @@ class MessageOrchestrator:
         if not args:
             current = self.settings.claude_model
             alias_lines = "\n".join(
-                f"  <code>{alias}</code> → <code>{model}</code>"
-                for alias, model in sorted(self._MODEL_ALIASES.items())
+                f"  <code>{alias}</code> → <code>{model}</code>" for alias, model in sorted(self._MODEL_ALIASES.items())
             )
             await update.message.reply_text(
                 f"Current model: <code>{escape_html(current)}</code>\n\n"
@@ -1196,6 +1204,115 @@ class MessageOrchestrator:
                 args=[new_model],
                 success=True,
             )
+
+    async def agentic_settings(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """/settings — interactive settings menu (owner only)."""
+        assert update.message is not None
+        assert update.effective_user is not None
+
+        from .settings_ui import build_menu_keyboard, is_owner
+
+        if not is_owner(update.effective_user.id, self.settings):
+            await update.message.reply_text("Owner only.")
+            return
+
+        kb = build_menu_keyboard()
+        await update.message.reply_text("⚙️ Settings", reply_markup=kb)
+
+        audit_logger = _bd(context).get("audit_logger")
+        if audit_logger:
+            await audit_logger.log_command(
+                user_id=update.effective_user.id,
+                command="settings",
+                args=[],
+                success=True,
+            )
+
+    async def _settings_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle set: callbacks for the interactive /settings menu."""
+        from . import settings_ui
+
+        query = update.callback_query
+        assert query is not None
+        assert query.from_user is not None
+
+        if not settings_ui.is_owner(query.from_user.id, self.settings):
+            await query.answer("Owner only", show_alert=True)
+            return
+
+        await query.answer()
+
+        data = query.data or ""
+        parts = data.split(":")  # e.g. ["set","cat","claude"] or ["set","val","claude_model","claude-sonnet-4-6"]
+        action = parts[1] if len(parts) > 1 else ""
+
+        env_path = settings_ui.resolve_env_file()
+
+        if action == "menu":
+            kb = settings_ui.build_menu_keyboard()
+            await query.edit_message_text("⚙️ Settings", reply_markup=kb)
+
+        elif action == "cat":
+            cat_key = parts[2] if len(parts) > 2 else ""
+            cat = settings_ui.SETTINGS_CATEGORIES.get(cat_key, {})
+            kb = settings_ui.build_category_keyboard(cat_key, self.settings)
+            await query.edit_message_text(f"{cat.get('label', cat_key)} Settings", reply_markup=kb)
+
+        elif action == "toggle":
+            field = parts[2] if len(parts) > 2 else ""
+            change = settings_ui.toggle_setting(self.settings, env_path, field)
+            cat_key = settings_ui.find_category(field)
+            cat = settings_ui.SETTINGS_CATEGORIES.get(cat_key, {})
+            kb = settings_ui.build_category_keyboard(cat_key, self.settings)
+            await query.edit_message_text(
+                f"{cat.get('label', cat_key)} Settings\n<i>Changed: {change}</i>",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+
+        elif action == "choose":
+            field = parts[2] if len(parts) > 2 else ""
+            field_def = settings_ui.find_field(field)
+            choices = field_def.get("choices", {}) if field_def else {}
+            kb = settings_ui.build_choice_keyboard(field, choices)
+            label = field_def["label"] if field_def else field
+            await query.edit_message_text(f"Choose {label}:", reply_markup=kb)
+
+        elif action == "val":
+            # parts: ["set", "val", "field_name", "value"] — value may contain hyphens
+            field = parts[2] if len(parts) > 2 else ""
+            value = parts[3] if len(parts) > 3 else ""
+            change = settings_ui.apply_setting(self.settings, env_path, field, value)
+            # Reset session when model changes (different model = new conversation)
+            if field == "claude_model":
+                _ud(context)["claude_session_id"] = None
+                _ud(context)["force_new_session"] = True
+            cat_key = settings_ui.find_category(field)
+            cat = settings_ui.SETTINGS_CATEGORIES.get(cat_key, {})
+            kb = settings_ui.build_category_keyboard(cat_key, self.settings)
+            await query.edit_message_text(
+                f"{cat.get('label', cat_key)} Settings\n<i>Changed: {change}</i>",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+
+        elif action == "inc":
+            field = parts[2] if len(parts) > 2 else ""
+            settings_ui.increment_setting(self.settings, env_path, field, +1)
+            cat_key = settings_ui.find_category(field)
+            cat = settings_ui.SETTINGS_CATEGORIES.get(cat_key, {})
+            kb = settings_ui.build_category_keyboard(cat_key, self.settings)
+            await query.edit_message_text(f"{cat.get('label', cat_key)} Settings", reply_markup=kb)
+
+        elif action == "dec":
+            field = parts[2] if len(parts) > 2 else ""
+            settings_ui.increment_setting(self.settings, env_path, field, -1)
+            cat_key = settings_ui.find_category(field)
+            cat = settings_ui.SETTINGS_CATEGORIES.get(cat_key, {})
+            kb = settings_ui.build_category_keyboard(cat_key, self.settings)
+            await query.edit_message_text(f"{cat.get('label', cat_key)} Settings", reply_markup=kb)
+
+        # action == "noop": display-only button, nothing to do
 
     async def agentic_reload(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """/reload — restart the bot process in-place to pick up code/config changes."""

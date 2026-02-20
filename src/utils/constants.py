@@ -1,5 +1,10 @@
 """Application-wide constants."""
 
+from pathlib import Path
+
+# Application home directory (consolidated config, data, logs)
+APP_HOME = Path.home() / ".claude-code-telegram"
+
 # Version info
 APP_NAME = "Claude Code Telegram Bot"
 APP_DESCRIPTION = "Telegram bot for remote Claude Code access"
@@ -75,8 +80,8 @@ DANGEROUS_PATTERNS = [
     r"\|",  # Piping
 ]
 
-# Database defaults
-DEFAULT_DATABASE_URL = "sqlite:///data/bot.db"
+# Database defaults — prefer ~/.claude-code-telegram/data/bot.db; fall back to legacy
+DEFAULT_DATABASE_URL = f"sqlite:///{APP_HOME}/data/bot.db"
 DEFAULT_BACKUP_RETENTION_DAYS = 30
 
 # Claude Code defaults

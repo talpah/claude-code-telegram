@@ -44,6 +44,39 @@ from src.storage.facade import Storage
 from src.storage.session_storage import SQLiteSessionStorage
 
 
+def bootstrap_dirs() -> None:
+    """Create ~/.claude-code-telegram/ directory layout and migrate legacy files."""
+    import shutil
+
+    from src.utils.constants import APP_HOME
+
+    dirs = [
+        APP_HOME / "config",
+        APP_HOME / "data",
+        APP_HOME / "logs",
+        APP_HOME / "backups",
+        APP_HOME / "backups" / "failed",
+    ]
+    for d in dirs:
+        d.mkdir(parents=True, exist_ok=True)
+
+    logger = structlog.get_logger()
+
+    # Migrate project-root .env → ~/.claude-code-telegram/config/.env (once)
+    new_env = APP_HOME / "config" / ".env"
+    old_env = Path(".env")
+    if not new_env.exists() and old_env.exists():
+        shutil.copy2(old_env, new_env)
+        logger.info("Migrated .env to consolidated location", dst=str(new_env))
+
+    # Migrate data/bot.db → ~/.claude-code-telegram/data/bot.db (once)
+    new_db = APP_HOME / "data" / "bot.db"
+    old_db = Path("data") / "bot.db"
+    if not new_db.exists() and old_db.exists():
+        shutil.copy2(old_db, new_db)
+        logger.info("Migrated bot.db to consolidated location", dst=str(new_db))
+
+
 def setup_logging(debug: bool = False) -> None:
     """Configure structured logging."""
     level = logging.DEBUG if debug else logging.INFO
@@ -407,6 +440,9 @@ async def main() -> None:
     logger.info("Starting Claude Code Telegram Bot", version=__version__)
 
     try:
+        # Bootstrap directory structure and migrate legacy files before loading config
+        bootstrap_dirs()
+
         # Load configuration
         from src.config import FeatureFlags, load_config
 

@@ -64,9 +64,14 @@ def err_hash(normalized: str) -> str:
 # ── Config helpers ────────────────────────────────────────────────────────────
 
 def _read_env() -> dict[str, str]:
+    # Priority: ~/.claude-code-telegram/config/.env → project-root .env
+    candidates = [
+        DATA_DIR / "config" / ".env",
+        PROJECT_DIR / ".env",
+    ]
+    env_file = next((p for p in candidates if p.exists()), None)
     env: dict[str, str] = {}
-    env_file = PROJECT_DIR / ".env"
-    if not env_file.exists():
+    if not env_file:
         return env
     for line in env_file.read_text().splitlines():
         if "=" in line and not line.startswith("#"):

@@ -199,7 +199,16 @@ class Settings(BaseSettings):
     checkin_quiet_hours_start: int = Field(22, description="Quiet hours start (24h UTC)", ge=0, le=23)
     checkin_quiet_hours_end: int = Field(8, description="Quiet hours end (24h UTC)", ge=0, le=23)
 
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", case_sensitive=False, extra="ignore")
+    model_config = SettingsConfigDict(
+        # Search consolidated home dir first, then fall back to project-root .env
+        env_file=[
+            str(Path.home() / ".claude-code-telegram" / "config" / ".env"),
+            ".env",
+        ],
+        env_file_encoding="utf-8",
+        case_sensitive=False,
+        extra="ignore",
+    )
 
     @field_validator("allowed_users", "notification_chat_ids", mode="before")
     @classmethod

@@ -1,11 +1,22 @@
 #!/usr/bin/env bash
 # Backs up .env before each bot start so watchdog has a restore point.
 # Called via ExecStartPre in bot.service.
+#
+# Searches for .env in priority order:
+#   1. ~/.claude-code-telegram/config/.env  (consolidated home)
+#   2. <project-root>/.env                  (legacy)
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="$PROJECT_DIR/.env"
-BACKUP_DIR="$PROJECT_DIR/data/config-backups"
+APP_HOME="${HOME}/.claude-code-telegram"
+BACKUP_DIR="${APP_HOME}/backups"
+
+# Resolve which .env to back up
+if [[ -f "${APP_HOME}/config/.env" ]]; then
+    ENV_FILE="${APP_HOME}/config/.env"
+else
+    ENV_FILE="$PROJECT_DIR/.env"
+fi
 
 mkdir -p "$BACKUP_DIR"
 
