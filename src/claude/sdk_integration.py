@@ -208,30 +208,39 @@ class ClaudeSDKManager:
                     await client.query(prompt)
                     try:
                         async for message in client.receive_response():
-                            # Only process meaningful message types; skip control/status messages
-                            # (RateLimitMessage, etc)
-                            if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
-                                message_type = type(message).__name__
-                                logger.debug("Skipping control message", message_type=message_type)
-                                continue
-                            
-                            messages.append(message)
+                            try:
+                                # Only process meaningful message types; skip control/status messages
+                                # (RateLimitMessage, etc)
+                                if not isinstance(message, (UserMessage, AssistantMessage, ResultMessage)):
+                                    message_type = type(message).__name__
+                                    logger.debug("Skipping control message", message_type=message_type)
+                                    continue
+                                
+                                messages.append(message)
 
-                            # Handle streaming callback
-                            if stream_callback:
-                                try:
-                                    await self._handle_stream_message(message, stream_callback)
-                                except Exception as callback_error:
-                                    logger.warning(
-                                        "Stream callback failed",
-                                        error=str(callback_error),
-                                        error_type=type(callback_error).__name__,
-                                    )
+                                # Handle streaming callback
+                                if stream_callback:
+                                    try:
+                                        await self._handle_stream_message(message, stream_callback)
+                                    except Exception as callback_error:
+                                        logger.warning(
+                                            "Stream callback failed",
+                                            error=str(callback_error),
+                                            error_type=type(callback_error).__name__,
+                                        )
+                            except Exception as message_error:
+                                # SDK may throw "Unknown message type" when creating message objects
+                                # for control messages like rate_limit_event. Skip and continue.
+                                logger.debug(
+                                    "Skipping unparseable message from SDK",
+                                    error=str(message_error),
+                                    error_type=type(message_error).__name__,
+                                )
+                                continue
                     except Exception as receive_error:
-                        # SDK may throw "Unknown message type" for rate_limit_event or other control messages
-                        # Log and continue — we have at least collected the meaningful messages so far
+                        # If the iterator itself fails (not individual messages), log but don't fail
                         logger.warning(
-                            "SDK receive_response error (control message?)",
+                            "SDK receive_response stream error",
                             error=str(receive_error),
                             error_type=type(receive_error).__name__,
                         )
