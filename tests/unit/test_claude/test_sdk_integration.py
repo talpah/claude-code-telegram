@@ -1,8 +1,9 @@
 """Test Claude SDK integration."""
 
+import asyncio
 import os
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from claude_agent_sdk import (
@@ -39,6 +40,32 @@ def _make_result_message(**kwargs):
     return ResultMessage(**defaults)
 
 
+def _mock_client(*messages):
+    """Create a mock ClaudeSDKClient that yields the given messages."""
+    client = AsyncMock()
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=False)
+    client.query = AsyncMock()
+
+    async def receive_response():
+        for msg in messages:
+            yield msg
+
+    client.receive_response = receive_response
+    return client
+
+
+def _mock_client_factory(*messages, capture_options=None):
+    """Create a factory that returns a mock client, optionally capturing options."""
+
+    def factory(options):
+        if capture_options is not None:
+            capture_options.append(options)
+        return _mock_client(*messages)
+
+    return factory
+
+
 class TestClaudeSDKManager:
     """Test Claude SDK manager."""
 
@@ -60,9 +87,6 @@ class TestClaudeSDKManager:
 
     async def test_sdk_manager_initialization_with_api_key(self, tmp_path):
         """Test SDK manager initialization with API key."""
-        from src.config.settings import Settings
-
-        # Test with API key provided
         config_with_key = Settings(
             telegram_bot_token="test:token",
             telegram_bot_username="testbot",
@@ -72,18 +96,12 @@ class TestClaudeSDKManager:
             claude_timeout_seconds=2,
         )
 
-        # Store original env var
         original_api_key = os.environ.get("ANTHROPIC_API_KEY")
 
         try:
-            manager = ClaudeSDKManager(config_with_key)
-
-            # Check that API key was set in environment
+            ClaudeSDKManager(config_with_key)
             assert os.environ.get("ANTHROPIC_API_KEY") == "test-api-key"
-            assert manager.active_sessions == {}
-
         finally:
-            # Restore original env var
             if original_api_key:
                 os.environ["ANTHROPIC_API_KEY"] = original_api_key
             elif "ANTHROPIC_API_KEY" in os.environ:
@@ -91,45 +109,67 @@ class TestClaudeSDKManager:
 
     async def test_sdk_manager_initialization_without_api_key(self, config):
         """Test SDK manager initialization without API key (uses CLI auth)."""
-        # Store original env var
         original_api_key = os.environ.get("ANTHROPIC_API_KEY")
 
         try:
-            # Remove any existing API key
             if "ANTHROPIC_API_KEY" in os.environ:
                 del os.environ["ANTHROPIC_API_KEY"]
 
-            manager = ClaudeSDKManager(config)
-
-            # Check that no API key was set (should use CLI auth)
+            ClaudeSDKManager(config)
             assert config.anthropic_api_key_str is None
-            assert manager.active_sessions == {}
-
         finally:
-            # Restore original env var
             if original_api_key:
                 os.environ["ANTHROPIC_API_KEY"] = original_api_key
 
     async def test_execute_command_success(self, sdk_manager):
         """Test successful command execution."""
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(session_id="test-session", total_cost_usd=0.05),
+        )
 
-        async def mock_query(prompt, options):
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(session_id="test-session", total_cost_usd=0.05)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             response = await sdk_manager.execute_command(
                 prompt="Test prompt",
                 working_directory=Path("/test"),
                 session_id="test-session",
             )
 
-        # Verify response
         assert isinstance(response, ClaudeResponse)
         assert response.session_id == "test-session"
-        assert response.duration_ms >= 0  # Can be 0 in tests
+        assert response.duration_ms >= 0
         assert not response.is_error
         assert response.cost == 0.05
+
+    async def test_execute_command_uses_result_message_content(self, sdk_manager):
+        """Test that ResultMessage.result is used when available."""
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("streaming text"),
+            _make_result_message(session_id="test-session", result="final answer"),
+        )
+
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
+            response = await sdk_manager.execute_command(
+                prompt="Test prompt",
+                working_directory=Path("/test"),
+            )
+
+        assert response.content == "final answer"
+
+    async def test_execute_command_falls_back_to_message_extraction(self, sdk_manager):
+        """Test that content is extracted from messages when ResultMessage.result is None."""
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("streamed content"),
+            _make_result_message(session_id="test-session", result=None),
+        )
+
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
+            response = await sdk_manager.execute_command(
+                prompt="Test prompt",
+                working_directory=Path("/test"),
+            )
+
+        assert response.content == "streamed content"
 
     async def test_execute_command_with_streaming(self, sdk_manager):
         """Test command execution with streaming callback."""
@@ -138,79 +178,51 @@ class TestClaudeSDKManager:
         async def stream_callback(update: StreamUpdate):
             stream_updates.append(update)
 
-        async def mock_query(prompt, options):
-            yield _make_assistant_message("Test response")
-            yield _make_result_message()
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(),
+        )
 
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await sdk_manager.execute_command(
                 prompt="Test prompt",
                 working_directory=Path("/test"),
                 stream_callback=stream_callback,
             )
 
-        # Verify streaming was called
         assert len(stream_updates) > 0
         assert any(update.type == "assistant" for update in stream_updates)
 
     async def test_execute_command_timeout(self, sdk_manager):
         """Test command execution timeout."""
-        import asyncio
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
 
-        # Mock a hanging operation - return async generator that never yields
-        async def mock_hanging_query(prompt, options):
-            await asyncio.sleep(5)  # This should timeout (config has 2s timeout)
-            yield  # This will never be reached
+        async def slow_query(prompt):
+            await asyncio.sleep(5)
+
+        client.query = slow_query
 
         from src.claude.exceptions import ClaudeTimeoutError
 
-        with patch("src.claude.sdk_integration.query", side_effect=mock_hanging_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", return_value=client):
             with pytest.raises(ClaudeTimeoutError):
                 await sdk_manager.execute_command(
                     prompt="Test prompt",
                     working_directory=Path("/test"),
                 )
 
-    async def test_session_management(self, sdk_manager):
-        """Test session management."""
-        session_id = "test-session"
-        messages = [_make_assistant_message("test")]
+    async def test_kill_all_processes_is_noop(self, sdk_manager):
+        """Test kill_all_processes is a no-op for per-request clients."""
+        await sdk_manager.kill_all_processes()  # Should not raise
 
-        # Update session
-        sdk_manager._update_session(session_id, messages)
-
-        # Verify session was created
-        assert session_id in sdk_manager.active_sessions
-        session_data = sdk_manager.active_sessions[session_id]
-        assert session_data["messages"] == messages
-
-    async def test_kill_all_processes(self, sdk_manager):
-        """Test killing all processes (clearing sessions)."""
-        # Add some active sessions
-        sdk_manager.active_sessions["session1"] = {"test": "data"}
-        sdk_manager.active_sessions["session2"] = {"test": "data2"}
-
-        assert len(sdk_manager.active_sessions) == 2
-
-        # Kill all processes
-        await sdk_manager.kill_all_processes()
-
-        # Sessions should be cleared
-        assert len(sdk_manager.active_sessions) == 0
-
-    def test_get_active_process_count(self, sdk_manager):
-        """Test getting active process count."""
+    def test_get_active_process_count_always_zero(self, sdk_manager):
+        """Test get_active_process_count always returns 0."""
         assert sdk_manager.get_active_process_count() == 0
-
-        # Add sessions
-        sdk_manager.active_sessions["session1"] = {"test": "data"}
-        sdk_manager.active_sessions["session2"] = {"test": "data2"}
-
-        assert sdk_manager.get_active_process_count() == 2
 
     async def test_execute_command_passes_mcp_config(self, tmp_path):
         """Test that MCP config is passed to ClaudeAgentOptions when enabled."""
-        # Create a valid MCP config file
         mcp_config_file = tmp_path / "mcp_config.json"
         mcp_config_file.write_text('{"mcpServers": {"test-server": {"command": "echo", "args": ["hello"]}}}')
 
@@ -225,42 +237,79 @@ class TestClaudeSDKManager:
         )
 
         manager = ClaudeSDKManager(config)
-
         captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
 
-        async def mock_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(total_cost_usd=0.01)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await manager.execute_command(
                 prompt="Test prompt",
                 working_directory=tmp_path,
             )
 
-        # Verify MCP config was parsed and passed as dict to options
         assert len(captured_options) == 1
         assert captured_options[0].mcp_servers == {"test-server": {"command": "echo", "args": ["hello"]}}
 
     async def test_execute_command_no_mcp_when_disabled(self, sdk_manager):
         """Test that MCP config is NOT passed when MCP is disabled."""
         captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
 
-        async def mock_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(total_cost_usd=0.01)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await sdk_manager.execute_command(
                 prompt="Test prompt",
                 working_directory=Path("/test"),
             )
 
-        # Verify MCP config was NOT set (should be empty default)
         assert len(captured_options) == 1
         assert captured_options[0].mcp_servers == {}
+
+    async def test_execute_command_passes_resume_session(self, sdk_manager):
+        """Test that session_id is passed as options.resume for continuation."""
+        captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(session_id="test-session"),
+            capture_options=captured_options,
+        )
+
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
+            await sdk_manager.execute_command(
+                prompt="Continue working",
+                working_directory=Path("/test"),
+                session_id="existing-session-id",
+                continue_session=True,
+            )
+
+        assert len(captured_options) == 1
+        assert captured_options[0].resume == "existing-session-id"
+
+    async def test_execute_command_no_resume_for_new_session(self, sdk_manager):
+        """Test that resume is not set for new sessions."""
+        captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(session_id="new-session"),
+            capture_options=captured_options,
+        )
+
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
+            await sdk_manager.execute_command(
+                prompt="New prompt",
+                working_directory=Path("/test"),
+                session_id=None,
+                continue_session=False,
+            )
+
+        assert len(captured_options) == 1
+        assert not getattr(captured_options[0], "resume", None)
 
 
 class TestClaudeSandboxSettings:
@@ -286,13 +335,13 @@ class TestClaudeSandboxSettings:
     async def test_sandbox_settings_passed_to_options(self, sdk_manager, tmp_path):
         """Test that sandbox settings are set on ClaudeAgentOptions."""
         captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
 
-        async def mock_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(total_cost_usd=0.01)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await sdk_manager.execute_command(
                 prompt="Test prompt",
                 working_directory=tmp_path,
@@ -309,13 +358,13 @@ class TestClaudeSandboxSettings:
     async def test_system_prompt_set_with_working_directory(self, sdk_manager, tmp_path):
         """Test that system_prompt references the working directory."""
         captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
 
-        async def mock_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(total_cost_usd=0.01)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await sdk_manager.execute_command(
                 prompt="Test prompt",
                 working_directory=tmp_path,
@@ -325,6 +374,32 @@ class TestClaudeSandboxSettings:
         opts = captured_options[0]
         assert str(tmp_path) in opts.system_prompt
         assert "relative paths" in opts.system_prompt.lower()
+
+    async def test_disallowed_tools_passed_to_options(self, tmp_path):
+        """Test that disallowed_tools from config are passed to ClaudeAgentOptions."""
+        config = Settings(
+            telegram_bot_token="test:token",
+            telegram_bot_username="testbot",
+            approved_directory=tmp_path,
+            claude_timeout_seconds=2,
+            claude_disallowed_tools=["WebFetch", "WebSearch"],
+        )
+        manager = ClaudeSDKManager(config)
+        captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
+
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
+            await manager.execute_command(
+                prompt="Test prompt",
+                working_directory=tmp_path,
+            )
+
+        assert len(captured_options) == 1
+        assert captured_options[0].disallowed_tools == ["WebFetch", "WebSearch"]
 
     async def test_sandbox_disabled_when_config_false(self, tmp_path):
         """Test sandbox is disabled when sandbox_enabled=False."""
@@ -337,15 +412,14 @@ class TestClaudeSandboxSettings:
             sandbox_enabled=False,
         )
         manager = ClaudeSDKManager(config)
-
         captured_options = []
+        mock_factory = _mock_client_factory(
+            _make_assistant_message("Test response"),
+            _make_result_message(total_cost_usd=0.01),
+            capture_options=captured_options,
+        )
 
-        async def mock_query(prompt, options):
-            captured_options.append(options)
-            yield _make_assistant_message("Test response")
-            yield _make_result_message(total_cost_usd=0.01)
-
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", side_effect=mock_factory):
             await manager.execute_command(
                 prompt="Test prompt",
                 working_directory=tmp_path,
@@ -380,11 +454,12 @@ class TestClaudeMCPErrors:
 
         from src.claude.exceptions import ClaudeMCPError
 
-        async def mock_query(prompt, options):
-            raise CLIConnectionError("MCP server failed to start")
-            yield  # make it an async generator
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.query = AsyncMock(side_effect=CLIConnectionError("MCP server failed to start"))
 
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", return_value=client):
             with pytest.raises(ClaudeMCPError) as exc_info:
                 await sdk_manager.execute_command(
                     prompt="Test prompt",
@@ -399,11 +474,12 @@ class TestClaudeMCPErrors:
 
         from src.claude.exceptions import ClaudeMCPError
 
-        async def mock_query(prompt, options):
-            raise ProcessError("Failed to start MCP server: connection refused")
-            yield  # make it an async generator
+        client = AsyncMock()
+        client.__aenter__ = AsyncMock(return_value=client)
+        client.__aexit__ = AsyncMock(return_value=False)
+        client.query = AsyncMock(side_effect=ProcessError("Failed to start MCP server: connection refused"))
 
-        with patch("src.claude.sdk_integration.query", side_effect=mock_query):
+        with patch("src.claude.sdk_integration.ClaudeSDKClient", return_value=client):
             with pytest.raises(ClaudeMCPError) as exc_info:
                 await sdk_manager.execute_command(
                     prompt="Test prompt",

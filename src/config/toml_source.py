@@ -38,7 +38,6 @@ SECTION_MAP: dict[str, list[str]] = {
         "auth_token_secret",
     ],
     "claude": [
-        "use_sdk",
         "anthropic_api_key",
         "claude_binary_path",
         "claude_cli_path",

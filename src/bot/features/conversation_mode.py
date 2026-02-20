@@ -29,7 +29,7 @@ from dataclasses import dataclass, field
 import structlog
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup
 
-from ...claude.integration import ClaudeResponse
+from ...claude.sdk_integration import ClaudeResponse
 
 logger = structlog.get_logger()
 
@@ -304,10 +304,11 @@ class ConversationEnhancer:
         self,
         response: ClaudeResponse,
         context: ConversationContext,
-        max_content_length: int = 3000,
+        max_content_length: int = 50000,
     ) -> tuple[str, InlineKeyboardMarkup | None]:
         """Format response with follow-up suggestions."""
-        # Truncate content if too long for Telegram
+        # Truncate content only for extremely large responses;
+        # normal splitting into multiple Telegram messages is handled by the caller.
         content = response.content
         if len(content) > max_content_length:
             content = content[:max_content_length] + "\n\n... <i>(response truncated)</i>"

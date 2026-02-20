@@ -9,7 +9,6 @@ Features:
 
 import asyncio
 import os
-import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -19,6 +18,7 @@ import structlog
 from claude_agent_sdk import (
     AssistantMessage,
     ClaudeAgentOptions,
+    ClaudeSDKClient,
     ClaudeSDKError,
     CLIConnectionError,
     CLIJSONDecodeError,
@@ -28,7 +28,6 @@ from claude_agent_sdk import (
     ResultMessage,
     ToolUseBlock,
     UserMessage,
-    query,
 )
 
 from ..config.settings import Settings
@@ -133,7 +132,6 @@ class ClaudeSDKManager:
     def __init__(self, config: Settings):
         """Initialize SDK manager with configuration."""
         self.config = config
-        self.active_sessions: dict[str, dict[str, Any]] = {}
 
         # Try to find and update PATH for Claude CLI
         if not update_path_for_claude(config.claude_cli_path):
@@ -175,6 +173,7 @@ class ClaudeSDKManager:
                 max_turns=self.config.claude_max_turns,
                 cwd=str(working_directory),
                 allowed_tools=self.config.claude_allowed_tools or [],
+                disallowed_tools=self.config.claude_disallowed_tools or [],
                 cli_path=cli_path,
                 model=self.config.claude_model or None,
                 sandbox={
@@ -201,25 +200,42 @@ class ClaudeSDKManager:
                     session_id=session_id,
                 )
 
-            # Collect messages
-            messages = []
-            cost = 0.0
-            tools_used = []
+            # Collect messages via ClaudeSDKClient
+            messages: list[Message] = []
 
-            # Execute with streaming and timeout
+            async def _run_client() -> None:
+                async with ClaudeSDKClient(options) as client:
+                    await client.query(prompt)
+                    async for message in client.receive_response():
+                        messages.append(message)
+
+                        # Handle streaming callback
+                        if stream_callback:
+                            try:
+                                await self._handle_stream_message(message, stream_callback)
+                            except Exception as callback_error:
+                                logger.warning(
+                                    "Stream callback failed",
+                                    error=str(callback_error),
+                                    error_type=type(callback_error).__name__,
+                                )
+
+            # Execute with timeout
             await asyncio.wait_for(
-                self._execute_query_with_streaming(prompt, options, messages, stream_callback),
+                _run_client(),
                 timeout=self.config.claude_timeout_seconds,
             )
 
-            # Extract cost, tools, and session_id from result message
+            # Extract cost, tools, session_id, and result content
             cost = 0.0
-            tools_used = []
+            tools_used: list[dict[str, Any]] = []
             claude_session_id = None
+            result_content = None
             for message in messages:
                 if isinstance(message, ResultMessage):
                     cost = getattr(message, "total_cost_usd", 0.0) or 0.0
                     claude_session_id = getattr(message, "session_id", None)
+                    result_content = getattr(message, "result", None)
                     tools_used = self._extract_tools_from_messages(messages)
                     break
 
@@ -227,7 +243,7 @@ class ClaudeSDKManager:
             duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
 
             # Use Claude's session_id if available, otherwise fall back
-            final_session_id = claude_session_id or session_id or str(uuid.uuid4())
+            final_session_id = claude_session_id or session_id or ""
 
             if claude_session_id and claude_session_id != session_id:
                 logger.info(
@@ -236,11 +252,15 @@ class ClaudeSDKManager:
                     previous_session_id=session_id,
                 )
 
-            # Update session
-            self._update_session(final_session_id, messages)
+            # Use ResultMessage.result if available, fall back to message extraction
+            content = (
+                result_content
+                if result_content is not None
+                else self._extract_content_from_messages(messages)
+            )
 
             return ClaudeResponse(
-                content=self._extract_content_from_messages(messages),
+                content=content,
                 session_id=final_session_id,
                 cost=cost,
                 duration_ms=duration_ms,
@@ -326,43 +346,6 @@ class ClaudeSDKManager:
                     error_type=type(e).__name__,
                 )
                 raise ClaudeProcessError(f"Unexpected error: {str(e)}")
-
-    async def _execute_query_with_streaming(
-        self, prompt: str, options, messages: list, stream_callback: Callable | None
-    ) -> None:
-        """Execute query with streaming and collect messages."""
-        try:
-            async for message in query(prompt=prompt, options=options):
-                messages.append(message)
-
-                # Handle streaming callback
-                if stream_callback:
-                    try:
-                        await self._handle_stream_message(message, stream_callback)
-                    except Exception as callback_error:
-                        logger.warning(
-                            "Stream callback failed",
-                            error=str(callback_error),
-                            error_type=type(callback_error).__name__,
-                        )
-                        # Continue processing even if callback fails
-
-        except Exception as e:
-            # Handle both ExceptionGroups and regular exceptions
-            if type(e).__name__ == "ExceptionGroup" or hasattr(e, "exceptions"):
-                logger.error(
-                    "TaskGroup error in streaming execution",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-            else:
-                logger.error(
-                    "Error in streaming execution",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
-            # Re-raise to be handled by the outer try-catch
-            raise
 
     async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], Any]) -> None:
         """Handle streaming message from claude-agent-sdk."""
@@ -467,23 +450,10 @@ class ClaudeSDKManager:
             logger.error("Failed to load MCP config", path=str(config_path), error=str(e))
             return {}
 
-    def _update_session(self, session_id: str, messages: list[Message]) -> None:
-        """Update session data."""
-        if session_id not in self.active_sessions:
-            self.active_sessions[session_id] = {
-                "messages": [],
-                "created_at": asyncio.get_event_loop().time(),
-            }
-
-        session_data = self.active_sessions[session_id]
-        session_data["messages"] = messages
-        session_data["last_used"] = asyncio.get_event_loop().time()
-
     async def kill_all_processes(self) -> None:
-        """Kill all active processes (no-op for SDK)."""
-        logger.info("Clearing active SDK sessions", count=len(self.active_sessions))
-        self.active_sessions.clear()
+        """Kill all active processes (no-op for SDK client model)."""
+        logger.info("SDK kill_all_processes called (no-op, per-request clients)")
 
     def get_active_process_count(self) -> int:
-        """Get number of active sessions."""
-        return len(self.active_sessions)
+        """Get number of active sessions (always 0, per-request clients)."""
+        return 0

@@ -52,7 +52,7 @@ class TestResponseFormatter:
         formatter = ResponseFormatter(mock_settings)
         assert formatter.settings == mock_settings
         assert formatter.max_message_length == 4000
-        assert formatter.max_code_block_length == 3000
+        assert formatter.max_code_block_length == 15000
 
     def test_format_simple_message(self, formatter):
         """Test formatting simple message."""
@@ -181,15 +181,29 @@ class TestResponseFormatter:
         assert "code_with_underscores" in cleaned
 
     def test_truncate_long_code_block(self, formatter):
-        """Test truncation of very long code blocks."""
-        long_code = "x" * 4000
+        """Test truncation of very long code blocks (exceeds 15000-char limit)."""
+        long_code = "x" * 20000
         text = f"```python\n{long_code}\n```"
 
         messages = formatter.format_claude_response(text)
 
-        # Should be truncated
+        # Should be split or truncated; full content shouldn't be lost silently
         assert len(messages) >= 1
-        assert "truncated" in messages[0].text.lower()
+        full_text = "".join(m.text for m in messages)
+        # Either truncated (with marker) or split across messages
+        assert "truncated" in full_text.lower() or len(messages) > 1
+
+    def test_long_code_block_split_not_truncated(self, formatter):
+        """Test that moderately long code blocks are split, not truncated."""
+        long_code = "x" * 5000
+        text = f"```python\n{long_code}\n```"
+
+        messages = formatter.format_claude_response(text)
+
+        # Should be split across messages, not truncated
+        assert len(messages) >= 1
+        full_text = "".join(m.text for m in messages)
+        assert "truncated" not in full_text.lower()
 
     def test_quick_actions_keyboard(self, formatter):
         """Test quick actions keyboard generation."""

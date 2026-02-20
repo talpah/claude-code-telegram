@@ -62,7 +62,6 @@ class Settings(BaseSettings):
     claude_max_turns: int = Field(DEFAULT_CLAUDE_MAX_TURNS, description="Max conversation turns")
     claude_timeout_seconds: int = Field(DEFAULT_CLAUDE_TIMEOUT_SECONDS, description="Claude timeout")
     claude_max_cost_per_user: float = Field(DEFAULT_CLAUDE_MAX_COST_PER_USER, description="Max cost per user")
-    use_sdk: bool = Field(True, description="Use Python SDK instead of CLI subprocess")
     claude_allowed_tools: list[str] | None = Field(
         default=[
             "Read",

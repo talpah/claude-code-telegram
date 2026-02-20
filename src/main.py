@@ -15,7 +15,6 @@ from src.bot.core import ClaudeCodeBot
 from src.bot.features.voice_handler import VoiceHandler
 from src.claude import (
     ClaudeIntegration,
-    ClaudeProcessManager,
     SessionManager,
     ToolMonitor,
 )
@@ -178,15 +177,9 @@ async def create_application(config: Settings) -> dict[str, Any]:
     session_manager = SessionManager(config, session_storage)
     tool_monitor = ToolMonitor(config, security_validator, agentic_mode=config.agentic_mode)
 
-    # Create Claude manager based on configuration
-    if config.use_sdk:
-        logger.info("Using Claude Python SDK integration")
-        sdk_manager = ClaudeSDKManager(config)
-        process_manager = None
-    else:
-        logger.info("Using Claude CLI subprocess integration")
-        process_manager = ClaudeProcessManager(config)
-        sdk_manager = None
+    # Create Claude SDK manager
+    logger.info("Using Claude Python SDK integration")
+    sdk_manager = ClaudeSDKManager(config)
 
     # Profile manager (optional — only active when USER_PROFILE_PATH is set)
     profile_manager = ProfileManager(config.user_profile_path) if config.user_profile_path else None
@@ -206,7 +199,6 @@ async def create_application(config: Settings) -> dict[str, Any]:
     # Create main Claude integration facade
     claude_integration = ClaudeIntegration(
         config=config,
-        process_manager=process_manager,
         sdk_manager=sdk_manager,
         session_manager=session_manager,
         tool_monitor=tool_monitor,
@@ -288,7 +280,10 @@ async def run_application(app: dict[str, Any]) -> None:
     shutdown_event = asyncio.Event()
 
     def signal_handler(signum: int, frame: Any) -> None:
-        logger.info("Shutdown signal received", signal=signum)
+        if signum == signal.SIGTERM:
+            logger.info("Shutting down due to: SIGTERM received (restart or config change)")
+        else:
+            logger.info("Shutting down: user requested (SIGINT)")
         shutdown_event.set()
 
     signal.signal(signal.SIGINT, signal_handler)

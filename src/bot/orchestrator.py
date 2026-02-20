@@ -24,7 +24,7 @@ from telegram.ext import (
 )
 
 from ..claude.exceptions import ClaudeToolValidationError
-from ..claude.integration import StreamUpdate
+from ..claude.sdk_integration import StreamUpdate
 from ..config.settings import Settings
 from ..projects import PrivateTopicsUnavailableError
 from .utils.html_format import escape_html
@@ -1333,6 +1333,8 @@ class MessageOrchestrator:
 
         await update.message.reply_text("Restarting bot process...")
         await asyncio.sleep(0.5)
+        log = structlog.get_logger()
+        log.info("Shutting down: user requested restart via /reload")
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     async def agentic_repo(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

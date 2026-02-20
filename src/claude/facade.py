@@ -12,9 +12,8 @@ import structlog
 
 from ..config.settings import Settings
 from .exceptions import ClaudeToolValidationError
-from .integration import ClaudeProcessManager, ClaudeResponse, StreamUpdate
 from .monitor import ToolMonitor
-from .sdk_integration import ClaudeSDKManager
+from .sdk_integration import ClaudeResponse, ClaudeSDKManager, StreamUpdate
 from .session import ClaudeSession, SessionManager
 
 if TYPE_CHECKING:
@@ -30,7 +29,6 @@ class ClaudeIntegration:
     def __init__(
         self,
         config: Settings,
-        process_manager: ClaudeProcessManager | None = None,
         sdk_manager: ClaudeSDKManager | None = None,
         session_manager: SessionManager | None = None,
         tool_monitor: ToolMonitor | None = None,
@@ -39,22 +37,11 @@ class ClaudeIntegration:
     ):
         """Initialize Claude integration facade."""
         self.config = config
-
-        # Initialize both managers for fallback capability
-        self.sdk_manager = sdk_manager or ClaudeSDKManager(config) if config.use_sdk else None
-        self.process_manager = process_manager or ClaudeProcessManager(config)
-
-        # Use SDK by default if configured
-        if config.use_sdk:
-            self.manager = self.sdk_manager
-        else:
-            self.manager = self.process_manager
-
+        self.sdk_manager = sdk_manager or ClaudeSDKManager(config)
         self.session_manager = session_manager
         self.tool_monitor = tool_monitor
         self.profile_manager = profile_manager
         self.memory_manager = memory_manager
-        self._sdk_failed_count = 0  # Track SDK failures for adaptive fallback
 
     async def run_command(
         self,
@@ -168,7 +155,7 @@ class ClaudeIntegration:
             claude_session_id = session.session_id if has_real_session else None
 
             try:
-                response = await self._execute_with_fallback(
+                response = await self._execute(
                     prompt=enriched_prompt,
                     working_directory=working_directory,
                     session_id=claude_session_id,
@@ -189,7 +176,7 @@ class ClaudeIntegration:
 
                     # Create a fresh session and retry
                     session = await session_manager.get_or_create_session(user_id, working_directory)
-                    response = await self._execute_with_fallback(
+                    response = await self._execute(
                         prompt=enriched_prompt,
                         working_directory=working_directory,
                         session_id=None,
@@ -241,12 +228,11 @@ class ClaudeIntegration:
             old_session_id = session.session_id
             await session_manager.update_session(session.session_id, response)
 
-            # For new sessions, get the updated session_id from the session manager
-            if hasattr(session, "is_new_session") and response.session_id:
-                # The session_id has been updated to Claude's session_id
+            # For new sessions, use the session_id Claude assigned.
+            # Use getattr (not hasattr) so that is_new_session=False means "continuing".
+            if getattr(session, "is_new_session", False) and response.session_id:
                 final_session_id = response.session_id
             else:
-                # Use the original session_id for continuing sessions
                 final_session_id = old_session_id
 
             # Ensure response has the correct session_id
@@ -272,7 +258,7 @@ class ClaudeIntegration:
             )
             raise
 
-    async def _execute_with_fallback(
+    async def _execute(
         self,
         prompt: str,
         working_directory: Path,
@@ -280,77 +266,14 @@ class ClaudeIntegration:
         continue_session: bool = False,
         stream_callback: Callable | None = None,
     ) -> ClaudeResponse:
-        """Execute command with SDK->subprocess fallback on JSON decode errors."""
-        # Try SDK first if configured
-        if self.config.use_sdk and self.sdk_manager:
-            try:
-                logger.debug("Attempting Claude SDK execution")
-                response = await self.sdk_manager.execute_command(
-                    prompt=prompt,
-                    working_directory=working_directory,
-                    session_id=session_id,
-                    continue_session=continue_session,
-                    stream_callback=stream_callback,
-                )
-                # Reset failure count on success
-                self._sdk_failed_count = 0
-                return response  # type: ignore[return-value]
-
-            except Exception as e:
-                error_str = str(e)
-                # Check if this is a JSON decode error that indicates SDK issues
-                if (
-                    "Failed to decode JSON" in error_str
-                    or "JSON decode error" in error_str
-                    or "TaskGroup" in error_str
-                    or "ExceptionGroup" in error_str
-                    or "Unknown message type" in error_str
-                ):
-                    self._sdk_failed_count += 1
-                    logger.warning(
-                        "Claude SDK failed with JSON/TaskGroup error, falling back to subprocess",
-                        error=error_str,
-                        failure_count=self._sdk_failed_count,
-                        error_type=type(e).__name__,
-                    )
-
-                    # Use subprocess fallback
-                    try:
-                        logger.info("Executing with subprocess fallback")
-                        # Don't pass SDK session_id to subprocess - start fresh
-                        # SDK and subprocess have separate session management
-                        response = await self.process_manager.execute_command(
-                            prompt=prompt,
-                            working_directory=working_directory,
-                            session_id=None,  # Start new session in subprocess
-                            continue_session=False,  # Fresh start
-                            stream_callback=stream_callback,
-                        )
-                        logger.info("Subprocess fallback succeeded")
-                        return response
-
-                    except Exception as fallback_error:
-                        logger.error(
-                            "Both SDK and subprocess failed",
-                            sdk_error=error_str,
-                            subprocess_error=str(fallback_error),
-                        )
-                        # Re-raise the original SDK error since it was the primary method
-                        raise e
-                else:
-                    # For non-JSON errors, re-raise immediately
-                    logger.error("Claude SDK failed with non-JSON error", error=error_str)
-                    raise
-        else:
-            # Use subprocess directly if SDK not configured
-            logger.debug("Using subprocess execution (SDK disabled)")
-            return await self.process_manager.execute_command(
-                prompt=prompt,
-                working_directory=working_directory,
-                session_id=session_id,
-                continue_session=continue_session,
-                stream_callback=stream_callback,
-            )
+        """Execute command via SDK."""
+        return await self.sdk_manager.execute_command(
+            prompt=prompt,
+            working_directory=working_directory,
+            session_id=session_id,
+            continue_session=continue_session,
+            stream_callback=stream_callback,
+        )
 
     async def _build_enriched_prompt(self, user_id: int, prompt: str) -> str:
         """Prepend profile, memory, and time context to the user's prompt."""
@@ -390,7 +313,7 @@ class ClaudeIntegration:
 
     async def quick_query(self, prompt: str, working_directory: Path) -> str:
         """Execute a one-shot query without session management. Returns response content."""
-        response = await self._execute_with_fallback(
+        response = await self._execute(
             prompt=prompt,
             working_directory=working_directory,
             session_id=None,
@@ -518,8 +441,7 @@ class ClaudeIntegration:
         logger.info("Shutting down Claude integration")
 
         # Kill any active processes
-        active_manager = self.sdk_manager or self.process_manager
-        await active_manager.kill_all_processes()
+        await self.sdk_manager.kill_all_processes()
 
         # Clean up expired sessions
         await self.cleanup_expired_sessions()

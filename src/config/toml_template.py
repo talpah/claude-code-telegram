@@ -63,7 +63,6 @@ auth_token_secret = ""
 # ── Claude ────────────────────────────────────────────────────────────────────
 
 [claude]
-use_sdk = true
 # Anthropic API key (optional if Claude CLI is logged in)
 anthropic_api_key = ""
 # Path to Claude CLI executable (leave empty to use $PATH)
