@@ -36,7 +36,13 @@ SELECT_TIMEOUT = 30               # seconds; summary checked at least this often
 CLASSIFY_MODEL = "claude-haiku-4-5"
 
 # journald priority: 0=emerg … 4=warning, 5=notice, 6=info, 7=debug
-MAX_PRIORITY = 4  # WARNING and above
+# The bot writes structured JSON to stdout; journald assigns all stdout lines
+# PRIORITY=6 (info) regardless of the embedded "level" field.  We must capture
+# at INFO level and then filter by the JSON "level" field ourselves.
+MAX_PRIORITY = 6  # capture INFO and above, filter by embedded level below
+
+# Minimum structlog level to process (case-insensitive)
+_PROCESS_LEVELS = frozenset({"warning", "warn", "error", "critical"})
 
 # ── Normalization & hashing ───────────────────────────────────────────────────
 
@@ -145,13 +151,109 @@ _HEURISTIC_CRITICAL = re.compile(
 )
 _HEURISTIC_IGNORE = re.compile(
     r"starting|started|stopping|stopped|reloading|loaded|"
-    r"listening|connected|heartbeat|ping|typing",
+    r"listening|connected|heartbeat|ping|typing|"
+    r"shutdown|cleanup|initializ|"
+    r"HTTP/1\.[01]|getUpdates|200 OK",
     re.I,
 )
 
+# Patterns that only matter if the service is still down after a grace period.
+# On a normal restart the service recovers within seconds — ignore those.
+_RECOVERY_CHECK_PATTERN = re.compile(r"bot is not running", re.I)
+_RECOVERY_GRACE_SECONDS = 30
+
+# Structured shutdown messages emitted by the bot before intentional restarts.
+# When seen, suppress recovery-check alerts for _EXPECTED_SHUTDOWN_WINDOW seconds.
+_EXPECTED_SHUTDOWN_PATTERN = re.compile(
+    r"shutting down(?:\s+due\s+to)?[\s:]+(?:sigterm|user\s+requested|restart|config\s+change)",
+    re.I,
+)
+_EXPECTED_SHUTDOWN_WINDOW = 120  # seconds after which suppression expires
+
+
+def _is_service_active(unit: str) -> bool:
+    """Return True if the systemd user unit is currently active."""
+    try:
+        result = subprocess.run(
+            ["systemctl", "--user", "is-active", unit],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            env={**os.environ, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"},
+        )
+        return result.returncode == 0
+    except Exception:
+        return False  # assume down if check fails
+
+
+def flush_recovery_checks(state: dict[str, Any]) -> None:
+    """Fire alerts for 'not running' lines if the service is still down after grace period.
+
+    Suppressed when an expected-shutdown marker was recorded recently (e.g. /reload,
+    SIGTERM from config change) — those restarts are expected to recover on their own.
+    """
+    pending: list[dict[str, Any]] = state.get("pending_recovery_checks", [])
+    if not pending:
+        return
+
+    now = time.time()
+    remaining: list[dict[str, Any]] = []
+
+    for check in pending:
+        if now - check["ts"] < _RECOVERY_GRACE_SECONDS:
+            remaining.append(check)
+            continue
+
+        # Grace period elapsed.  First check for expected-shutdown suppression.
+        since_expected = now - state.get("last_expected_shutdown_ts", 0)
+        if since_expected <= _EXPECTED_SHUTDOWN_WINDOW:
+            _log(
+                f"recovery: expected shutdown {int(since_expected)}s ago — "
+                f"suppressing alert [{check['h']}]"
+            )
+            continue
+
+        # Check if the service has already recovered on its own.
+        unit = check.get("unit", WATCHED_UNITS[0])
+        if _is_service_active(unit):
+            _log(f"recovery: {unit} is active — suppressing alert [{check['h']}]")
+            continue
+
+        # Service still down and no expected shutdown: fire the alert.
+        _log(f"recovery check: {unit} still down — alerting [{check['h']}]")
+        line = check["line"]
+        norm = check["norm"]
+        h = check["h"]
+        seen: dict[str, Any] = state.setdefault("seen", {})
+
+        if h not in seen:
+            severity = classify(line)
+            if severity != "IGNORE":
+                entry: dict[str, Any] = {
+                    "first_seen": datetime.now(UTC).isoformat(),
+                    "first_seen_ts": now,
+                    "last_seen": datetime.now(UTC).isoformat(),
+                    "last_seen_ts": now,
+                    "count": 1,
+                    "severity": severity,
+                    "sample": line[:300],
+                    "normalized": norm,
+                }
+                seen[h] = entry
+                log_file = append_error_log(severity, line, norm, h)
+                _log(f"new {severity} [{h}]: {line[:80]}")
+                icon = "🔴" if severity == "CRITICAL" else "🟡"
+                send_telegram(
+                    f"{icon} <b>New {severity} error</b>\n\n"
+                    f"<code>{line[:400]}</code>\n\n"
+                    f"ID: <code>{h}</code>  •  📄 <code>{log_file}</code>"
+                )
+
+    state["pending_recovery_checks"] = remaining
+
 
 def classify(line: str) -> str:
-    """Return CRITICAL, TODO, or IGNORE via Claude Haiku (heuristic fallback)."""
+    """Return CRITICAL, WARNING, or IGNORE via Claude Haiku (heuristic fallback)."""
     api_key = anthropic_key()
     if not api_key:
         return _heuristic_classify(line)
@@ -167,14 +269,14 @@ def classify(line: str) -> str:
                     "You are classifying a Telegram bot service log line.\n"
                     "Reply with exactly one word:\n"
                     "  CRITICAL — service-breaking, security issue, data loss risk\n"
-                    "  TODO     — needs attention, not immediately urgent\n"
+                    "  WARNING  — needs attention, not immediately urgent\n"
                     "  IGNORE   — expected behaviour, informational, noise\n\n"
                     f"Log: {line[:500]}"
                 ),
             }],
         )
         verdict = resp.content[0].text.strip().upper()
-        return verdict if verdict in ("CRITICAL", "TODO", "IGNORE") else "TODO"
+        return verdict if verdict in ("CRITICAL", "WARNING", "IGNORE") else "WARNING"
     except Exception as exc:
         _log(f"warn: Claude classify failed: {exc}")
         return _heuristic_classify(line)
@@ -185,7 +287,7 @@ def _heuristic_classify(line: str) -> str:
         return "IGNORE"
     if _HEURISTIC_CRITICAL.search(line):
         return "CRITICAL"
-    return "TODO"
+    return "WARNING"
 
 
 # ── Error log file ────────────────────────────────────────────────────────────
@@ -250,16 +352,49 @@ def _journal_cmd() -> list[str]:
     ]
 
 
-def _parse_journal_line(raw: str) -> str | None:
-    """Return the MESSAGE string or None if line is unparseable."""
+def _parse_journal_line(raw: str) -> tuple[str, str] | None:
+    """Return (message_text, level) or None if line should be skipped.
+
+    The bot writes structured JSON to stdout; journald wraps it in its own JSON
+    envelope.  We parse the outer envelope to get MESSAGE, then attempt to parse
+    MESSAGE itself as JSON to extract the embedded structlog "level" field.
+
+    Returns None for unparseable lines or lines below the minimum log level.
+    """
     raw = raw.strip()
     if not raw:
         return None
     try:
-        obj = json.loads(raw)
-        return obj.get("MESSAGE") or None
+        outer = json.loads(raw)
+        message = outer.get("MESSAGE") or ""
     except json.JSONDecodeError:
-        return raw if raw else None
+        message = raw
+
+    if not message:
+        return None
+
+    # Try to parse the bot's embedded JSON payload to extract log level
+    level = "unknown"
+    try:
+        inner = json.loads(message)
+        if isinstance(inner, dict):
+            level = (inner.get("level") or "unknown").lower()
+    except (json.JSONDecodeError, TypeError):
+        pass  # plain-text message — pass through without level filtering
+
+    # Structured bot log: only process warning / error / critical
+    if level in _PROCESS_LEVELS:
+        return message, level
+
+    # Plain-text / third-party library line (httpx, etc.): only surface if it
+    # looks like a hard failure — skip routine noise like "200 OK" poll lines.
+    if level == "unknown":
+        if _HEURISTIC_CRITICAL.search(message):
+            return message, "unknown"
+        return None
+
+    # info / debug from structured logs → skip
+    return None
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
@@ -274,12 +409,32 @@ def process_line(line: str, state: dict[str, Any]) -> None:
     now = time.time()
     seen: dict[str, Any] = state.setdefault("seen", {})
 
+    # Expected-shutdown marker: record timestamp and skip alerting.
+    if _EXPECTED_SHUTDOWN_PATTERN.search(line):
+        state["last_expected_shutdown_ts"] = now
+        _log(f"expected shutdown recorded: {line[:80]}")
+        return
+
+    # "Not running" warning: defer — only alert if service stays down after grace period.
+    if _RECOVERY_CHECK_PATTERN.search(line):
+        pending: list[dict[str, Any]] = state.setdefault("pending_recovery_checks", [])
+        if not any(c["h"] == h for c in pending):
+            pending.append({
+                "ts": now,
+                "h": h,
+                "line": line,
+                "norm": norm,
+                "unit": WATCHED_UNITS[0],
+            })
+            _log(f"recovery: deferred check for [{h}]: {line[:60]}")
+        return
+
     if h in seen:
         entry = seen[h]
         entry["count"] = entry.get("count", 1) + 1
         entry["last_seen_ts"] = now
         entry["last_seen"] = datetime.now(UTC).isoformat()
-        append_error_log(entry.get("severity", "TODO"), line, norm, h)
+        append_error_log(entry.get("severity", "WARNING"), line, norm, h)
         return
 
     # New pattern — classify and notify
@@ -337,13 +492,15 @@ def run() -> None:
                     raw = proc.stdout.readline()
                     if not raw:
                         break
-                    msg = _parse_journal_line(raw)
-                    if msg:
+                    parsed = _parse_journal_line(raw)
+                    if parsed:
+                        msg, _level = parsed
                         process_line(msg, state)
 
                 if maybe_send_summary(state):
                     _log("Summary sent")
 
+                flush_recovery_checks(state)
                 save_state(state)
 
         except KeyboardInterrupt:
