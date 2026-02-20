@@ -319,6 +319,7 @@ class MessageOrchestrator:
             ("reload", self.agentic_reload),
             ("settings", self.agentic_settings),
             ("set", self.agentic_set),
+            ("location", self.agentic_request_location),
         ]
         if self.settings.enable_project_threads:
             handlers.append(("sync_threads", command.sync_threads))
@@ -350,6 +351,12 @@ class MessageOrchestrator:
         # Voice / audio messages -> transcribe -> Claude
         app.add_handler(
             MessageHandler(filters.VOICE | filters.AUDIO, self._inject_deps(self.agentic_voice)),
+            group=10,
+        )
+
+        # Location messages -> Claude with GPS context
+        app.add_handler(
+            MessageHandler(filters.LOCATION, self._inject_deps(self.agentic_location)),
             group=10,
         )
 
@@ -426,6 +433,7 @@ class MessageOrchestrator:
                 BotCommand("repo", "List repos / switch workspace"),
                 BotCommand("memory", "Show Claude's memory about you"),
                 BotCommand("model", "Show or change Claude model"),
+                BotCommand("location", "Request your GPS location"),
                 BotCommand("reload", "Restart the bot process"),
                 BotCommand("settings", "Interactive settings menu (owner only)"),
                 BotCommand("set", "Set a setting value (owner only)"),
@@ -782,6 +790,55 @@ class MessageOrchestrator:
         await progress_msg.delete()
         prompt = f"🎤 Voice: {transcribed}"
         await self._run_agentic_prompt(update, context, prompt)
+
+    async def agentic_location(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Handle location messages and pass GPS context to Claude."""
+        assert update.message is not None
+        assert update.effective_user is not None
+
+        location = update.message.location
+        if not location:
+            return
+
+        # Store location in user_data for this session
+        _ud(context)["last_location"] = {
+            "latitude": location.latitude,
+            "longitude": location.longitude,
+            "timestamp": update.message.date.isoformat() if update.message.date else None,
+        }
+
+        # Build rich context for Claude
+        prompt = (
+            f"📍 User shared their location:\n"
+            f"• Coordinates: {location.latitude}, {location.longitude}\n"
+            f"• Google Maps: https://www.google.com/maps?q={location.latitude},{location.longitude}\n"
+        )
+
+        if location.horizontal_accuracy:
+            prompt += f"• Accuracy: ±{location.horizontal_accuracy}m\n"
+
+        prompt += "\nHow can I help with this location?"
+
+        await self._run_agentic_prompt(update, context, prompt)
+
+    async def agentic_request_location(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Send a keyboard button to request user's location."""
+        assert update.message is not None
+        from telegram import KeyboardButton, ReplyKeyboardMarkup
+
+        keyboard = [[KeyboardButton("📍 Share My Location", request_location=True)]]
+        reply_markup = ReplyKeyboardMarkup(
+            keyboard,
+            one_time_keyboard=True,
+            resize_keyboard=True,
+            input_field_placeholder="Tap the button to share location",
+        )
+
+        await update.message.reply_text(
+            "Please share your location so I can help you better.\n\n"
+            "Tap the button below to send your current GPS coordinates.",
+            reply_markup=reply_markup,
+        )
 
     async def _run_agentic_prompt(
         self,
