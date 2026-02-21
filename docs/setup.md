@@ -115,23 +115,27 @@ API_SERVER_PORT=8080
 #### GitHub Webhook Setup
 
 1. Generate a webhook secret:
+   
    ```bash
    openssl rand -hex 32
    ```
 
 2. Add to your `.env`:
+   
    ```bash
    GITHUB_WEBHOOK_SECRET=your-generated-secret
    NOTIFICATION_CHAT_IDS=123456789  # Your Telegram chat ID for notifications
    ```
 
 3. In your GitHub repository, go to **Settings > Webhooks > Add webhook**:
+   
    - **Payload URL**: `https://your-server:8080/webhooks/github`
    - **Content type**: `application/json`
    - **Secret**: The secret you generated
    - **Events**: Choose which events to receive (push, pull_request, issues, etc.)
 
 4. Test with curl:
+   
    ```bash
    curl -X POST http://localhost:8080/webhooks/github \
      -H "Content-Type: application/json" \
@@ -150,6 +154,7 @@ WEBHOOK_API_SECRET=your-api-secret
 ```
 
 Send webhooks with:
+
 ```bash
 curl -X POST http://localhost:8080/webhooks/custom \
   -H "Content-Type: application/json" \
@@ -182,22 +187,24 @@ NOTIFICATION_CHAT_IDS=123456789,987654321
 
 ### Authentication Methods Comparison
 
-| Feature | SDK + CLI Auth | SDK + API Key | CLI Subprocess |
-|---------|----------------|---------------|----------------|
-| Performance | Best | Best | Slower |
-| CLI Required | Yes | No | Yes |
-| Streaming | Yes | Yes | Limited |
-| Error Handling | Best | Best | Basic |
+| Feature        | SDK + CLI Auth | SDK + API Key | CLI Subprocess |
+| -------------- | -------------- | ------------- | -------------- |
+| Performance    | Best           | Best          | Slower         |
+| CLI Required   | Yes            | No            | Yes            |
+| Streaming      | Yes            | Yes           | Limited        |
+| Error Handling | Best           | Best          | Basic          |
 
 ### Security Configuration
 
 #### Directory Isolation
+
 ```bash
 # Set to a specific project directory, not your home directory
 APPROVED_DIRECTORY=/Users/yourname/projects
 ```
 
 #### User Access Control
+
 ```bash
 # Whitelist specific users (recommended)
 ALLOWED_USERS=123456789,987654321
@@ -234,6 +241,7 @@ CLAUDE_TIMEOUT_SECONDS=600
 Send voice messages and have them automatically transcribed.
 
 **Groq (cloud, recommended):**
+
 ```bash
 # Get a free API key at console.groq.com
 VOICE_PROVIDER=groq
@@ -241,6 +249,7 @@ GROQ_API_KEY=gsk_...
 ```
 
 **Local (offline, needs whisper.cpp + ffmpeg):**
+
 ```bash
 # Install whisper.cpp: https://github.com/ggerganov/whisper.cpp
 # Install ffmpeg: apt install ffmpeg / brew install ffmpeg
@@ -290,6 +299,7 @@ CHECKIN_QUIET_HOURS_END=8
 ## Troubleshooting
 
 ### Bot doesn't respond
+
 ```bash
 # Check your bot token
 echo $TELEGRAM_BOT_TOKEN
@@ -302,18 +312,21 @@ make run-debug
 ### Claude authentication issues
 
 **SDK + CLI Auth:**
+
 ```bash
 claude auth status
 # If not authenticated: claude auth login
 ```
 
 **SDK + API Key:**
+
 ```bash
 # Verify key starts with: sk-ant-api03-
 echo $ANTHROPIC_API_KEY
 ```
 
 ### Permission errors
+
 ```bash
 # Check approved directory exists and is accessible
 ls -la /path/to/your/projects
