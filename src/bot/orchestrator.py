@@ -576,6 +576,7 @@ class MessageOrchestrator:
         _ud(context)["claude_session_id"] = None
         _ud(context)["session_started"] = True
         _ud(context)["force_new_session"] = True
+        _ud(context)["recent_history"] = []
 
         await update.message.reply_text("Session reset. What's next?")
 
@@ -951,6 +952,19 @@ class MessageOrchestrator:
         # Flag is only cleared after a successful run so retries keep the intent.
         force_new = bool(_ud(context).get("force_new_session"))
 
+        # Prepend recent conversation history as context.
+        # This is a reliable fallback when SDK session resume doesn't carry over
+        # conversational context (e.g. "do you have credentials?" after asking about HA).
+        recent_history: list[dict[str, str]] = _ud(context).get("recent_history", [])
+        if recent_history and not force_new:
+            history_lines = []
+            for turn in recent_history:
+                u = turn["user"][:200].replace("\n", " ")
+                b = turn["bot"][:300].replace("\n", " ")
+                history_lines.append(f"User: {u}\nAssistant: {b}")
+            history_block = "\n\n".join(history_lines)
+            prompt = f"## Recent Conversation\n{history_block}\n\n## Current Message\n{prompt}"
+
         # --- Verbose progress tracking via stream callback ---
         tool_log: list[dict[str, Any]] = []
         start_time = time.time()
@@ -975,6 +989,16 @@ class MessageOrchestrator:
                 _ud(context)["force_new_session"] = False
 
             _ud(context)["claude_session_id"] = claude_response.session_id
+
+            # Update rolling conversation history (last 3 turns) for context continuity.
+            # Strips the injected history block from the stored prompt so we only keep
+            # the original user message.
+            raw_prompt = prompt
+            if "## Recent Conversation\n" in prompt and "## Current Message\n" in prompt:
+                raw_prompt = prompt.split("## Current Message\n", 1)[-1]
+            history = _ud(context).get("recent_history", [])
+            history.append({"user": raw_prompt, "bot": claude_response.content or ""})
+            _ud(context)["recent_history"] = history[-3:]
 
             # Track actual cost post-execution
             if rate_limiter and claude_response.cost and claude_response.cost > 0:
