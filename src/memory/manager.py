@@ -276,6 +276,9 @@ class MemoryManager:
                 rows = await cursor.fetchall()
                 return [self._row_to_entry(row) for row in rows]
             except Exception:
+                # Truncate query for LIKE fallback — SQLite raises "LIKE or GLOB
+                # pattern too complex" on very long strings (e.g. full file uploads).
+                like_term = f"%{query[:500]}%"
                 cursor = await conn.execute(
                     """
                     SELECT * FROM memory_entries
@@ -283,7 +286,7 @@ class MemoryManager:
                     ORDER BY priority DESC, updated_at DESC
                     LIMIT ?
                     """,
-                    (user_id, f"%{query}%", limit),
+                    (user_id, like_term, limit),
                 )
                 rows = await cursor.fetchall()
                 return [self._row_to_entry(row) for row in rows]

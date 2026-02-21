@@ -275,7 +275,20 @@ class ClaudeCodeBot:
 
     async def _error_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         """Handle errors globally."""
+        import telegram.error as tg_error
+
         error = context.error
+
+        # Transient network errors are expected (DNS blips, timeouts during polling).
+        # Log at debug level and skip audit — they self-recover and are not actionable.
+        if isinstance(error, (tg_error.NetworkError, tg_error.TimedOut)):
+            logger.debug(
+                "Transient network error during polling (self-healing)",
+                error=str(error),
+                error_type=type(error).__name__,
+            )
+            return
+
         logger.error(
             "Global error handler triggered",
             error=str(error),
