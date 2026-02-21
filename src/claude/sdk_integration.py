@@ -244,6 +244,9 @@ class ClaudeSDKManager:
 
                         messages.append(message)
 
+                        if isinstance(message, ResultMessage):
+                            break
+
                         if stream_callback:
                             try:
                                 await self._handle_stream_message(message, stream_callback)
@@ -261,7 +264,7 @@ class ClaudeSDKManager:
             tools_used: list[dict[str, Any]] = []
             claude_session_id = None
             result_content = None
-            
+
             for message in messages:
                 if isinstance(message, ResultMessage):
                     cost = getattr(message, "total_cost_usd", 0.0) or 0.0
@@ -269,6 +272,19 @@ class ClaudeSDKManager:
                     result_content = getattr(message, "result", None)
                     tools_used = self._extract_tools_from_messages(messages)
                     break
+
+            # Fallback: extract session_id from StreamEvent messages if
+            # ResultMessage didn't provide one (can happen with some CLI versions)
+            if not claude_session_id:
+                for message in messages:
+                    msg_session_id = getattr(message, "session_id", None)
+                    if msg_session_id and not isinstance(message, ResultMessage):
+                        claude_session_id = msg_session_id
+                        logger.info(
+                            "Got session ID from stream event (fallback)",
+                            session_id=claude_session_id,
+                        )
+                        break
 
             # Calculate duration
             duration_ms = int((asyncio.get_event_loop().time() - start_time) * 1000)
@@ -376,11 +392,11 @@ class ClaudeSDKManager:
 
     async def _handle_stream_message(self, message: Message, stream_callback: Callable[[StreamUpdate], Any]) -> None:
         """Handle streaming message from claude-agent-sdk.
-        
+
         Only receives:
         - AssistantMessage (from tool execution, reasoning)
         - UserMessage (confirmation messages)
-        
+
         Control messages (RateLimitMessage, etc) are filtered upstream in execute_command().
         """
         try:

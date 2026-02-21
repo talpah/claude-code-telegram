@@ -256,6 +256,11 @@ class SessionManager:
             elif hasattr(session, "is_new_session") and session.is_new_session:
                 # Mark as no longer new even if no session_id from Claude
                 session.is_new_session = False
+                logger.warning(
+                    "Claude returned no session_id for new session; session will not be resumable",
+                    user_id=session.user_id,
+                    project_path=str(session.project_path),
+                )
 
             session.update_usage(response)
 

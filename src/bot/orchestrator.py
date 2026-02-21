@@ -37,20 +37,43 @@ _RESTART_NOTIFY_FILE = APP_HOME / "data" / "restart_notify.json"
 
 # Keywords that suggest a potentially destructive or hazardous action in voice input.
 # Used to trigger a confirmation step before sending to Claude.
-_DESTRUCTIVE_KEYWORDS: frozenset[str] = frozenset({
-    "delete", "deleted", "deleting",
-    "remove", "removed", "removing",
-    "erase", "erased", "erasing",
-    "drop", "dropped", "dropping",
-    "destroy", "destroyed", "destroying",
-    "wipe", "wiped", "wiping",
-    "purge", "purged", "purging",
-    "reset", "revert", "rollback",
-    "discard", "overwrite", "truncate",
-    "format", "uninstall",
-    "kill", "terminate",
-    "force", "hard",  # "force push", "hard reset"
-})
+_DESTRUCTIVE_KEYWORDS: frozenset[str] = frozenset(
+    {
+        "delete",
+        "deleted",
+        "deleting",
+        "remove",
+        "removed",
+        "removing",
+        "erase",
+        "erased",
+        "erasing",
+        "drop",
+        "dropped",
+        "dropping",
+        "destroy",
+        "destroyed",
+        "destroying",
+        "wipe",
+        "wiped",
+        "wiping",
+        "purge",
+        "purged",
+        "purging",
+        "reset",
+        "revert",
+        "rollback",
+        "discard",
+        "overwrite",
+        "truncate",
+        "format",
+        "uninstall",
+        "kill",
+        "terminate",
+        "force",
+        "hard",  # "force push", "hard reset"
+    }
+)
 
 
 def _write_restart_notify(chat_id: int, message_thread_id: int | None) -> None:
@@ -814,20 +837,20 @@ class MessageOrchestrator:
 
         user = update.effective_user
         display_name = escape_html(user.first_name or user.username or "User")
-        await progress_msg.edit_text(
-            f"{display_name} 🎤: <i>{escape_html(transcribed)}</i>", parse_mode="HTML"
-        )
+        await progress_msg.edit_text(f"{display_name} 🎤: <i>{escape_html(transcribed)}</i>", parse_mode="HTML")
 
         prompt = f"🎤 Voice: {transcribed}"
         words = frozenset(transcribed.lower().split())
         if words & _DESTRUCTIVE_KEYWORDS:
             _ud(context)["pending_voice_prompt"] = prompt
-            keyboard = InlineKeyboardMarkup([
+            keyboard = InlineKeyboardMarkup(
                 [
-                    InlineKeyboardButton("✅ Yes, proceed", callback_data="voice:confirm:yes"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="voice:confirm:no"),
+                    [
+                        InlineKeyboardButton("✅ Yes, proceed", callback_data="voice:confirm:yes"),
+                        InlineKeyboardButton("❌ Cancel", callback_data="voice:confirm:no"),
+                    ]
                 ]
-            ])
+            )
             await update.message.reply_text(
                 "⚠️ This voice message may request a destructive or hazardous action.\n"
                 "Due to transcription uncertainty, please confirm you want to proceed.",
@@ -992,6 +1015,7 @@ class MessageOrchestrator:
                     else:
                         # No SQLite memory — still handle [MEMFILE:] tags
                         import re as _re
+
                         _MEMFILE_RE = _re.compile(r"\[MEMFILE:\s*(.+?)\]", _re.IGNORECASE | _re.DOTALL)
                         processed = []
                         for _m in _MEMFILE_RE.finditer(claude_response.content):
@@ -1021,7 +1045,7 @@ class MessageOrchestrator:
             from .handlers.message import _format_error_message
             from .utils.formatting import FormattedMessage
 
-            formatted_messages = [FormattedMessage(_format_error_message(str(e)), parse_mode="HTML")]
+            formatted_messages = [FormattedMessage(_format_error_message(e), parse_mode="HTML")]
         finally:
             heartbeat.cancel()
 
@@ -1193,7 +1217,7 @@ class MessageOrchestrator:
         except Exception as e:
             from .handlers.message import _format_error_message
 
-            await progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
+            await progress_msg.edit_text(_format_error_message(e), parse_mode="HTML")
             logger.error("Claude file processing failed", error=str(e), user_id=user_id)
         finally:
             heartbeat.cancel()
@@ -1273,7 +1297,7 @@ class MessageOrchestrator:
         except Exception as e:
             from .handlers.message import _format_error_message
 
-            await progress_msg.edit_text(_format_error_message(str(e)), parse_mode="HTML")
+            await progress_msg.edit_text(_format_error_message(e), parse_mode="HTML")
             logger.error("Claude photo processing failed", error=str(e), user_id=user_id)
 
     async def agentic_memory(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

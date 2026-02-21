@@ -255,6 +255,12 @@ class ClaudeIntegration:
             else:
                 response.session_id = ""
 
+            if not response.session_id:
+                logger.warning(
+                    "No session_id after execution; session cannot be resumed",
+                    user_id=user_id,
+                )
+
             logger.info(
                 "Claude command completed",
                 session_id=response.session_id,
